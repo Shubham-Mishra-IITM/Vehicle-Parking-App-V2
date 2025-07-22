@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.env
+*.db
+*.sqlite
+*.sqlite3
+.DS_Store
+.git/
+.gitignore
+README.md
+tests/
+.pytest_cache/
+.coverage

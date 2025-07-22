@@ -1,8 +1,5 @@
-from flask_sqlalchemy import SQLAlchemy
+from database import db
 from datetime import datetime
-
-# This will be imported from app.py
-db = SQLAlchemy()
 
 class ParkingSpot(db.Model):
     __tablename__ = 'parking_spots'
@@ -15,8 +12,7 @@ class ParkingSpot(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
-    # Relationships (using string names to avoid circular imports)
-    reservations = db.relationship('Reservation', backref='parking_spot', lazy=True, cascade='all, delete-orphan')
+    # Note: Relationships are defined via backref in Reservation model
     
     def is_available(self):
         """Check if the parking spot is available"""

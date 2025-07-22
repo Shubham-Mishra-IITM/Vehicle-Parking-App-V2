@@ -3,27 +3,42 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from redis import Redis
 from config import Config
+from dotenv import load_dotenv
+from database import db
+import os
 
-# Initialize Flask app
+# Change to the backend directory to ensure correct paths
+backend_dir = os.path.dirname(os.path.abspath(__file__))
+os.chdir(backend_dir)
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Create Flask app
 app = Flask(__name__)
 app.config.from_object(Config)
 
-# Initialize database
-db = SQLAlchemy(app)
+# Print debug information
+print(f"🔍 Debug Info:")
+print(f"   Working Directory: {os.getcwd()}")
+print(f"   Database URI: {app.config['SQLALCHEMY_DATABASE_URI']}")
+db_path = app.config['SQLALCHEMY_DATABASE_URI'].replace('sqlite:///', '')
+print(f"   Database File: {db_path}")
+print(f"   File Exists: {os.path.exists(db_path)}")
+print(f"   Directory Exists: {os.path.exists(os.path.dirname(db_path))}")
 
-# Update the db instance in all models
-import models.user as user_module
-import models.parking_lot as parking_lot_module
-import models.parking_spot as parking_spot_module
-import models.reservation as reservation_module
+# Ensure the instance folder exists
+instance_path = os.path.join(backend_dir, 'instance')
+os.makedirs(instance_path, exist_ok=True)
 
-user_module.db = db
-parking_lot_module.db = db
-parking_spot_module.db = db
-reservation_module.db = db
+# Initialize database with app
+db.init_app(app)
 
-# Now import models for database operations
-from models import User, ParkingLot, ParkingSpot, Reservation
+# Import models after db is set up
+from models.user import User
+from models.parking_lot import ParkingLot  
+from models.parking_spot import ParkingSpot
+from models.reservation import Reservation
 
 # Initialize Redis
 try:
@@ -57,12 +72,34 @@ def index():
         'redis': 'connected' if redis else 'disconnected'
     }
 
+@app.route('/debug-db')
+def debug_db():
+    """Debug database connection"""
+    import os
+    try:
+        db_uri = app.config['SQLALCHEMY_DATABASE_URI']
+        db_path = db_uri.replace('sqlite:///', '') if db_uri.startswith('sqlite:///') else 'unknown'
+        
+        from models.user import User
+        users = User.query.all()
+        
+        return {
+            'database_uri': db_uri,
+            'database_file_path': db_path,
+            'file_exists': os.path.exists(db_path) if db_path != 'unknown' else False,
+            'working_directory': os.getcwd(),
+            'users_count': len(users),
+            'users': [{'username': u.username, 'role': u.role} for u in users]
+        }
+    except Exception as e:
+        return {'error': str(e), 'type': type(e).__name__}, 500
+
 @app.route('/health')
 def health_check():
     """Detailed health check"""
     try:
         # Test database connection
-        db.session.execute('SELECT 1')
+        db.session.execute(db.text('SELECT 1'))
         db_status = 'connected'
     except Exception as e:
         db_status = f'error: {str(e)}'
@@ -91,4 +128,4 @@ def health_check():
     }
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5004, debug=True)

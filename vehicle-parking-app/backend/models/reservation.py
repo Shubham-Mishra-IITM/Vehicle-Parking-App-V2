@@ -1,9 +1,6 @@
-from flask_sqlalchemy import SQLAlchemy
+from database import db
 from datetime import datetime, timedelta
 from decimal import Decimal
-
-# This will be imported from app.py
-db = SQLAlchemy()
 
 class Reservation(db.Model):
     __tablename__ = 'reservations'
@@ -21,7 +18,9 @@ class Reservation(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
-    # Note: Relationships are defined via backref in other models
+    # Relationships
+    user = db.relationship('User', backref='reservations')
+    parking_spot = db.relationship('ParkingSpot', backref='reservations')
     
     def calculate_parking_duration(self):
         """Calculate parking duration in hours"""

@@ -1,5 +1,2 @@
-# backend/tasks/__init__.py
-
+# Tasks package for Celery background jobs
 from .celery_app import celery
-
-__all__ = ['celery']

@@ -19,7 +19,8 @@ def generate_token(user_id, role):
 @auth_bp.route('/register', methods=['POST'])
 def register():
     """Register a new user"""
-    from models import User, db
+    from models.user import User
+    from database import db
     
     try:
         data = request.get_json()
@@ -73,7 +74,8 @@ def register():
 @auth_bp.route('/login', methods=['POST'])
 def login():
     """Login user"""
-    from models import User, db
+    from models.user import User
+    from database import db
     
     try:
         data = request.get_json()
@@ -118,7 +120,8 @@ def login():
 @auth_bp.route('/admin-login', methods=['POST'])
 def admin_login():
     """Special login endpoint for admin"""
-    from models import User, db
+    from models.user import User
+    from database import db
     
     try:
         data = request.get_json()
@@ -172,7 +175,7 @@ def verify_token():
         # Decode token
         payload = jwt.decode(token, current_app.config['SECRET_KEY'], algorithms=['HS256'])
         
-        from models import User
+        from models.user import User
         user = User.query.get(payload['user_id'])
         if not user:
             return jsonify({'error': 'Invalid token'}), 401

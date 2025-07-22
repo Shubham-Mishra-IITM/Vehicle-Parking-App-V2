@@ -1,8 +1,5 @@
-from flask_sqlalchemy import SQLAlchemy
+from database import db
 from datetime import datetime
-
-# This will be imported from app.py
-db = SQLAlchemy()
 
 class ParkingLot(db.Model):
     __tablename__ = 'parking_lots'

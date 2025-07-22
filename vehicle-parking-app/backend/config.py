@@ -2,16 +2,21 @@ from pathlib import Path
 import os
 
 class Config:
-    # Flask configuration
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'your_secret_key_change_in_production'
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'sqlite:///parking.db'
+    # Flask configuration  
+    SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
+    
+    # Use absolute path to database file
+    _base_dir = os.path.dirname(os.path.abspath(__file__))
+    _db_path = os.path.join(_base_dir, 'instance', 'parking2.db')
+    # Always use absolute path for SQLite to avoid CWD issues
+    SQLALCHEMY_DATABASE_URI = f'sqlite:///{_db_path}'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
     # Redis configuration
-    REDIS_URL = os.environ.get('REDIS_URL') or 'redis://localhost:6379/0'
+    REDIS_URL = os.environ.get('REDIS_URL') or 'redis://localhost:6379/1'  # Use DB 1 for v2
     REDIS_HOST = os.environ.get('REDIS_HOST') or 'localhost'
     REDIS_PORT = int(os.environ.get('REDIS_PORT', 6379))
-    REDIS_DB = int(os.environ.get('REDIS_DB', 0))
+    REDIS_DB = int(os.environ.get('REDIS_DB', 1))  # Use DB 1 for v2
     
     # Celery configuration
     CELERY_BROKER_URL = REDIS_URL
