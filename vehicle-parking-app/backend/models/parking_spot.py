@@ -7,7 +7,7 @@ class ParkingSpot(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     spot_number = db.Column(db.String(10), nullable=False)  # e.g., "A1", "B2", etc.
     lot_id = db.Column(db.Integer, db.ForeignKey('parking_lots.id'), nullable=False)
-    status = db.Column(db.String(1), default='A', nullable=False)  # A=Available, O=Occupied
+    status = db.Column(db.String(1), default='A', nullable=False)  # A=Available, R=Reserved, O=Occupied
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -21,6 +21,15 @@ class ParkingSpot(db.Model):
     def is_occupied(self):
         """Check if the parking spot is occupied"""
         return self.status == 'O'
+    
+    def is_reserved(self):
+        """Check if the parking spot is reserved"""
+        return self.status == 'R'
+    
+    def reserve_spot(self):
+        """Mark the spot as reserved"""
+        self.status = 'R'
+        self.updated_at = datetime.utcnow()
     
     def occupy_spot(self):
         """Mark the spot as occupied"""

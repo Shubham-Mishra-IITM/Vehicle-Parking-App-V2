@@ -3,68 +3,92 @@
     <h1>User Profile</h1>
     
     <div class="row">
-      <div class="col-md-8">
+      <div class="col-md-12">
         <div class="card">
           <div class="card-header">
             <h5 class="mb-0">Profile Information</h5>
           </div>
           <div class="card-body">
+            <div v-if="profileError" class="alert alert-danger mb-3">{{ profileError }}</div>
             <form @submit.prevent="updateProfile">
               <div class="row">
                 <div class="col-md-6 mb-3">
-                  <label class="form-label">Username</label>
-                  <input type="text" class="form-control" v-model="profileForm.username" required>
+                  <label class="form-label">Username <span class="text-danger">*</span></label>
+                  <input 
+                    type="text" 
+                    class="form-control" 
+                    v-model="profileForm.username" 
+                    required
+                    minlength="3"
+                    maxlength="80">
+                  <div class="form-text">Username must be 3-80 characters long</div>
                 </div>
                 <div class="col-md-6 mb-3">
-                  <label class="form-label">Email</label>
-                  <input type="email" class="form-control" v-model="profileForm.email" required>
+                  <label class="form-label">Full Name</label>
+                  <input 
+                    type="text" 
+                    class="form-control" 
+                    v-model="profileForm.full_name" 
+                    placeholder="Enter your full name"
+                    maxlength="200">
                 </div>
               </div>
               <div class="row">
                 <div class="col-md-6 mb-3">
-                  <label class="form-label">Phone Number</label>
-                  <input type="tel" class="form-control" v-model="profileForm.phone_number" placeholder="Optional">
+                  <label class="form-label">Email Address <span class="text-danger">*</span></label>
+                  <input 
+                    type="email" 
+                    class="form-control" 
+                    v-model="profileForm.email" 
+                    required
+                    maxlength="120">
                 </div>
                 <div class="col-md-6 mb-3">
-                  <label class="form-label">Role</label>
-                  <input type="text" class="form-control" :value="authStore.user?.role" disabled>
+                  <label class="form-label">Phone Number</label>
+                  <input 
+                    type="tel" 
+                    class="form-control" 
+                    v-model="profileForm.phone_number" 
+                    placeholder="Enter your phone number"
+                    maxlength="15">
                 </div>
               </div>
-              <button type="submit" class="btn btn-primary" :disabled="updating">
-                <span v-if="updating" class="spinner-border spinner-border-sm me-1"></span>
-                Update Profile
-              </button>
-            </form>
-          </div>
-        </div>
-      </div>
-      
-      <div class="col-md-4">
-        <div class="card">
-          <div class="card-header">
-            <h5 class="mb-0">Account Statistics</h5>
-          </div>
-          <div class="card-body">
-            <div class="mb-3">
-              <small class="text-muted">Member Since</small>
-              <div>{{ formatDate(authStore.user?.created_at) }}</div>
-            </div>
-            <div class="mb-3">
-              <small class="text-muted">Total Reservations</small>
-              <div class="h4">{{ stats.total_reservations }}</div>
-            </div>
-            <div class="mb-3">
-              <small class="text-muted">Total Spent</small>
-              <div class="h4">${{ stats.total_spent }}</div>
-            </div>
-            <div class="mb-3">
-              <small class="text-muted">Account Status</small>
-              <div>
-                <span :class="authStore.user?.is_active ? 'badge bg-success' : 'badge bg-danger'">
-                  {{ authStore.user?.is_active ? 'Active' : 'Inactive' }}
-                </span>
+              <div class="row">
+                <div class="col-md-8 mb-3">
+                  <label class="form-label">Address</label>
+                  <textarea 
+                    class="form-control" 
+                    v-model="profileForm.address" 
+                    rows="3" 
+                    placeholder="Enter your complete address"></textarea>
+                </div>
+                <div class="col-md-4 mb-3">
+                  <label class="form-label">PIN Code</label>
+                  <input 
+                    type="text" 
+                    class="form-control" 
+                    v-model="profileForm.pin_code" 
+                    placeholder="Enter PIN code"
+                    maxlength="10">
+                </div>
               </div>
-            </div>
+              <div class="mb-3">
+                <label class="form-label">Role</label>
+                <input type="text" class="form-control" :value="authStore.user?.role" disabled>
+                <div class="form-text">Your account role cannot be changed</div>
+              </div>
+              <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary" :disabled="updating">
+                  <span v-if="updating" class="spinner-border spinner-border-sm me-1"></span>
+                  <i class="bi bi-check-circle me-1"></i>
+                  Update Profile
+                </button>
+                <button type="button" class="btn btn-outline-secondary" @click="loadProfile" :disabled="updating">
+                  <i class="bi bi-arrow-clockwise me-1"></i>
+                  Reset
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       </div>
@@ -72,7 +96,7 @@
 
     <!-- Change Password Section -->
     <div class="row mt-4">
-      <div class="col-md-8">
+      <div class="col-md-12">
         <div class="card">
           <div class="card-header">
             <h5 class="mb-0">Change Password</h5>
@@ -184,24 +208,29 @@
 <script>
 import { ref, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { useNotificationStore } from '@/stores/notification'
 import api from '@/services/api'
 
 export default {
   name: 'UserProfileView',
   setup() {
     const authStore = useAuthStore()
+    const notificationStore = useNotificationStore()
     const updating = ref(false)
     const changingPassword = ref(false)
     const passwordError = ref('')
-    const stats = ref({})
+    const profileError = ref('')
     const vehicles = ref([])
     const showAddVehicle = ref(false)
     const addingVehicle = ref(false)
     
     const profileForm = ref({
       username: '',
+      full_name: '',
       email: '',
-      phone_number: ''
+      phone_number: '',
+      address: '',
+      pin_code: ''
     })
     
     const passwordForm = ref({
@@ -222,18 +251,12 @@ export default {
       if (authStore.user) {
         profileForm.value = {
           username: authStore.user.username || '',
+          full_name: authStore.user.full_name || '',
           email: authStore.user.email || '',
-          phone_number: authStore.user.phone_number || ''
+          phone_number: authStore.user.phone_number || '',
+          address: authStore.user.address || '',
+          pin_code: authStore.user.pin_code || ''
         }
-      }
-    }
-
-    const fetchStats = async () => {
-      try {
-        const response = await api.get('/user/stats')
-        stats.value = response.data
-      } catch (err) {
-        console.error('Error fetching stats:', err)
       }
     }
 
@@ -247,14 +270,36 @@ export default {
     }
 
     const updateProfile = async () => {
+      profileError.value = ''
       updating.value = true
+      
       try {
+        // Basic validation
+        if (!profileForm.value.username || profileForm.value.username.length < 3) {
+          profileError.value = 'Username must be at least 3 characters long'
+          return
+        }
+        
+        if (!profileForm.value.email) {
+          profileError.value = 'Email is required'
+          return
+        }
+        
         const response = await api.put('/user/profile', profileForm.value)
-        authStore.user = { ...authStore.user, ...response.data }
-        alert('Profile updated successfully!')
+        
+        // Update the user data in the auth store
+        authStore.user = { ...authStore.user, ...response.data.user }
+        
+        // Show success notification
+        notificationStore.success('Profile updated successfully!')
+        
+        // Reload profile to ensure frontend is in sync
+        loadProfile()
       } catch (err) {
         console.error('Error updating profile:', err)
-        alert('Failed to update profile')
+        const errorMessage = err.response?.data?.error || 'Failed to update profile'
+        profileError.value = errorMessage
+        notificationStore.error(errorMessage)
       } finally {
         updating.value = false
       }
@@ -265,6 +310,11 @@ export default {
       
       if (passwordForm.value.new_password !== passwordForm.value.confirm_password) {
         passwordError.value = 'New passwords do not match'
+        return
+      }
+
+      if (passwordForm.value.new_password.length < 6) {
+        passwordError.value = 'Password must be at least 6 characters long'
         return
       }
 
@@ -281,9 +331,9 @@ export default {
           confirm_password: ''
         }
         
-        alert('Password changed successfully!')
+        notificationStore.success('Password changed successfully!')
       } catch (err) {
-        passwordError.value = err.response?.data?.message || 'Failed to change password'
+        passwordError.value = err.response?.data?.error || err.response?.data?.message || 'Failed to change password'
       } finally {
         changingPassword.value = false
       }
@@ -295,10 +345,11 @@ export default {
         await api.post('/user/vehicles', vehicleForm.value)
         closeVehicleModal()
         await fetchVehicles()
-        alert('Vehicle added successfully!')
+        notificationStore.success('Vehicle added successfully!')
       } catch (err) {
         console.error('Error adding vehicle:', err)
-        alert('Failed to add vehicle')
+        const errorMessage = err.response?.data?.error || 'Failed to add vehicle'
+        notificationStore.error(errorMessage)
       } finally {
         addingVehicle.value = false
       }
@@ -310,10 +361,11 @@ export default {
       try {
         await api.delete(`/user/vehicles/${vehicleId}`)
         await fetchVehicles()
-        alert('Vehicle removed successfully!')
+        notificationStore.success('Vehicle removed successfully!')
       } catch (err) {
         console.error('Error removing vehicle:', err)
-        alert('Failed to remove vehicle')
+        const errorMessage = err.response?.data?.error || 'Failed to remove vehicle'
+        notificationStore.error(errorMessage)
       }
     }
 
@@ -335,7 +387,6 @@ export default {
 
     onMounted(() => {
       loadProfile()
-      fetchStats()
       fetchVehicles()
     })
 
@@ -344,7 +395,7 @@ export default {
       updating,
       changingPassword,
       passwordError,
-      stats,
+      profileError,
       vehicles,
       showAddVehicle,
       addingVehicle,
@@ -352,6 +403,7 @@ export default {
       passwordForm,
       vehicleForm,
       updateProfile,
+      loadProfile,
       changePassword,
       addVehicle,
       removeVehicle,
@@ -361,3 +413,56 @@ export default {
   }
 }
 </script>
+
+<style scoped>
+.card {
+  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+  border: 1px solid rgba(0, 0, 0, 0.125);
+}
+
+.card-header {
+  background-color: #f8f9fa;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.125);
+}
+
+.form-label {
+  font-weight: 500;
+  color: #495057;
+}
+
+.form-control:focus {
+  border-color: #80bdff;
+  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+.btn-primary {
+  background-color: #007bff;
+  border-color: #007bff;
+}
+
+.btn-primary:hover {
+  background-color: #0056b3;
+  border-color: #004085;
+}
+
+.text-danger {
+  color: #dc3545 !important;
+}
+
+.form-text {
+  font-size: 0.875em;
+  color: #6c757d;
+}
+
+.badge {
+  font-size: 0.875em;
+}
+
+.modal-backdrop {
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+.btn-group .btn {
+  margin-right: 0.25rem;
+}
+</style>

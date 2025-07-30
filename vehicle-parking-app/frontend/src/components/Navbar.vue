@@ -10,7 +10,10 @@
                     <li class="nav-item">
                         <router-link class="nav-link" to="/">Home</router-link>
                     </li>
-                    <li class="nav-item">
+                    <li class="nav-item" v-if="authStore.user && authStore.user.role === 'admin'">
+                        <router-link class="nav-link" to="/admin/users">Users</router-link>
+                    </li>
+                    <li class="nav-item" v-if="!authStore.user || authStore.user.role === 'user'">
                         <router-link class="nav-link" to="/parking-lots">Browse Parking</router-link>
                     </li>
                     <li class="nav-item" v-if="authStore.user && authStore.user.role === 'admin'">

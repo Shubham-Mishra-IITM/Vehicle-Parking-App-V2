@@ -1,0 +1,54 @@
+from flask import Blueprint, request, jsonify, current_app
+from functools import wraps
+import jwt
+
+admin_bp = Blueprint('admin', __name__)
+
+def admin_required(f):
+    """Decorator to require admin authentication"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        token = request.headers.get('Authorization')
+        if not token:
+            return jsonify({'error': 'Token is missing'}), 401
+        
+        try:
+            if token.startswith('Bearer '):
+                token = token[7:]
+            
+            payload = jwt.decode(token, current_app.config['SECRET_KEY'], algorithms=['HS256'])
+            
+            if payload.get('role') != 'admin':
+                return jsonify({'error': 'Admin access required'}), 403
+                
+            request.current_user_id = payload['user_id']
+            request.current_user_role = payload['role']
+            
+        except jwt.ExpiredSignatureError:
+            return jsonify({'error': 'Token has expired'}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({'error': 'Invalid token'}), 401
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+            
+        return f(*args, **kwargs)
+    return decorated_function
+
+@admin_bp.route('/users', methods=['GET'])
+@admin_required
+def get_users():
+    """Get all users with their details for the Users hyperlink page"""
+    try:
+        from models.user import User
+        
+        users = User.query.all()
+        users_data = []
+        
+        for user in users:
+            user_dict = user.to_dict()
+            users_data.append(user_dict)
+        
+        return jsonify(users_data), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

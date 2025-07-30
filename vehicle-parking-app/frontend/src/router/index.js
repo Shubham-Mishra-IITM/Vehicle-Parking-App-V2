@@ -3,6 +3,7 @@ import HomeView from '../views/HomeView.vue'
 import LoginView from '../views/LoginView.vue'
 import RegisterView from '../views/RegisterView.vue'
 import AdminDashboardView from '../views/AdminDashboardView.vue'
+import AdminUsersView from '../views/AdminUsersView.vue'
 import UserDashboardView from '../views/UserDashboardView.vue'
 import UserProfileView from '../views/UserProfileView.vue'
 import ParkingLotsView from '../views/ParkingLotsView.vue'
@@ -32,6 +33,12 @@ const router = createRouter({
       path: '/admin',
       name: 'admin-dashboard',
       component: AdminDashboardView,
+      meta: { requiresAuth: true, role: 'admin' }
+    },
+    {
+      path: '/admin/users',
+      name: 'admin-users',
+      component: AdminUsersView,
       meta: { requiresAuth: true, role: 'admin' }
     },
     {

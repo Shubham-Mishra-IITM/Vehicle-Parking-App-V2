@@ -46,7 +46,7 @@
             <div class="row mb-3">
               <div class="col-6">
                 <small class="text-muted">Price per hour</small>
-                <div class="h5 text-primary">${{ lot.price }}</div>
+                <div class="h5 text-primary">{{ formatINR(lot.price) }}</div>
               </div>
               <div class="col-6">
                 <small class="text-muted">Available spots</small>
@@ -83,7 +83,7 @@
                   @click="quickBook(lot)"
                   :disabled="!lot.is_active || lot.available_spots === 0"
                 >
-                  Quick Book
+                  {{ authStore.isAuthenticated ? 'Quick Book' : 'Login to Book' }}
                 </button>
               </div>
             </div>
@@ -118,7 +118,7 @@
                 </div>
                 <div class="col-md-6">
                   <h6>Pricing & Status</h6>
-                  <p><strong>Price per Hour:</strong> ${{ selectedLot.price }}</p>
+                                    <p><strong>Price per Hour:</strong> {{ formatINR(selectedLot.price) }}</p>
                   <p><strong>Status:</strong> 
                     <span :class="selectedLot.is_active ? 'badge bg-success' : 'badge bg-danger'">
                       {{ selectedLot.is_active ? 'Open' : 'Closed' }}
@@ -160,7 +160,7 @@
               @click="bookFromDetails"
               :disabled="!selectedLot?.is_active || selectedLot?.available_spots === 0"
             >
-              Book Parking
+              {{ authStore.isAuthenticated ? 'Book Parking' : 'Login to Book' }}
             </button>
           </div>
         </div>
@@ -188,12 +188,12 @@
                 <select class="form-select" v-model="quickBookForm.hours" required>
                   <option value="">Select Hours</option>
                   <option v-for="hour in [1,2,3,4,5,6,8,12,24]" :key="hour" :value="hour">
-                    {{ hour }} hour{{ hour > 1 ? 's' : '' }} - ${{ calculateQuickBookCost(hour) }}
+                    {{ hour }} hour{{ hour > 1 ? 's' : '' }} - {{ formatINR(calculateQuickBookCost(hour)) }}
                   </option>
                 </select>
               </div>
               <div class="alert alert-info">
-                <strong>Total Cost:</strong> ${{ calculateQuickBookCost(quickBookForm.hours || 0) }}
+                <strong>Total Cost:</strong> {{ formatINR(calculateQuickBookCost(quickBookForm.hours || 0)) }}
               </div>
             </form>
           </div>
@@ -219,13 +219,16 @@
 <script>
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 import { useNotificationStore } from '@/stores/notification'
+import { formatINR } from '@/utils/currency'
 import api from '@/services/api'
 
 export default {
   name: 'ParkingLotsView',
   setup() {
     const router = useRouter()
+    const authStore = useAuthStore()
     const notificationStore = useNotificationStore()
     const loading = ref(true)
     const error = ref('')
@@ -293,8 +296,9 @@ export default {
     const viewDetails = async (lot) => {
       selectedLot.value = lot
       try {
-        const response = await api.get(`/parking/lots/${lot.id}/spots`)
-        spotDetails.value = response.data
+        const response = await api.get(`/parking/lots/${lot.id}`)
+        const lotDetails = response.data
+        spotDetails.value = [...(lotDetails.available_spots_details || []), ...(lotDetails.occupied_spots_details || [])]
       } catch (err) {
         console.error('Error fetching spot details:', err)
         spotDetails.value = []
@@ -309,6 +313,13 @@ export default {
     }
 
     const quickBook = (lot) => {
+      // Check if user is authenticated
+      if (!authStore.isAuthenticated) {
+        notificationStore.error('Please login to proceed for booking')
+        router.push('/login')
+        return
+      }
+      
       quickBookLot.value = lot
       quickBookForm.value = { vehicle_number: '', hours: '' }
       showQuickBookModal.value = true
@@ -321,18 +332,26 @@ export default {
     }
 
     const calculateQuickBookCost = (hours) => {
-      if (!quickBookLot.value || !hours) return '0.00'
-      return (quickBookLot.value.price * hours).toFixed(2)
+      if (!quickBookLot.value || !hours) return 0
+      return quickBookLot.value.price * hours
     }
 
     const confirmQuickBook = async () => {
       if (!quickBookForm.value.vehicle_number || !quickBookForm.value.hours) return
       
+      // Double-check authentication before making API call
+      if (!authStore.isAuthenticated) {
+        notificationStore.error('Please login to proceed for booking')
+        router.push('/login')
+        return
+      }
+      
       booking.value = true
       try {
         // First get available spots for this lot
-        const spotsResponse = await api.get(`/parking/lots/${quickBookLot.value.id}/available-spots`)
-        const availableSpots = spotsResponse.data
+        const spotsResponse = await api.get(`/parking/lots/${quickBookLot.value.id}`)
+        const lotDetails = spotsResponse.data
+        const availableSpots = lotDetails.available_spots_details || []
         
         if (availableSpots.length === 0) {
           notificationStore.warning('No spots available at this location')
@@ -341,7 +360,7 @@ export default {
 
         // Book the first available spot
         const spot = availableSpots[0]
-        const cost = parseFloat(calculateQuickBookCost(quickBookForm.value.hours))
+        const cost = calculateQuickBookCost(quickBookForm.value.hours)
         
         const reservationData = {
           parking_lot_id: quickBookLot.value.id,
@@ -360,13 +379,39 @@ export default {
         router.push('/dashboard')
       } catch (err) {
         console.error('Error booking spot:', err)
-        notificationStore.error('Failed to book parking spot')
+        
+        // Check for authentication/authorization errors first
+        if (err.response?.status === 401 || err.response?.status === 403) {
+          notificationStore.error('Please login to proceed for booking')
+          router.push('/login')
+          return
+        }
+        
+        // Show specific error message from backend
+        const errorMessage = err.response?.data?.error || 'Failed to book parking spot'
+        
+        // Check if user already has active reservation
+        if (errorMessage.toLowerCase().includes('active reservation')) {
+          notificationStore.error('You already have an active parking reservation. Please go to your dashboard to manage it or cancel it before booking a new spot.')
+          setTimeout(() => {
+            router.push('/dashboard')
+          }, 3000) // Give user time to read the message
+        } else {
+          notificationStore.error(errorMessage)
+        }
       } finally {
         booking.value = false
       }
     }
 
     const bookFromDetails = () => {
+      // Check if user is authenticated
+      if (!authStore.isAuthenticated) {
+        notificationStore.error('Please login to proceed for booking')
+        router.push('/login')
+        return
+      }
+      
       closeDetailsModal()
       quickBook(selectedLot.value)
     }
@@ -376,6 +421,7 @@ export default {
     })
 
     return {
+      authStore,
       loading,
       error,
       parkingLots,
@@ -397,7 +443,8 @@ export default {
       closeQuickBookModal,
       calculateQuickBookCost,
       confirmQuickBook,
-      bookFromDetails
+      bookFromDetails,
+      formatINR
     }
   }
 }

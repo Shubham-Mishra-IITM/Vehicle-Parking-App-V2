@@ -9,10 +9,14 @@ class User(db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(128), nullable=False)
+    full_name = db.Column(db.String(200), nullable=True)
     phone_number = db.Column(db.String(15), nullable=True)
+    address = db.Column(db.Text, nullable=True)
+    pin_code = db.Column(db.String(10), nullable=True)
     role = db.Column(db.String(20), default='user', nullable=False)  # 'admin' or 'user'
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=True)
     last_login = db.Column(db.DateTime, nullable=True)
     
     # Relationships - using lazy loading to avoid circular imports
@@ -35,10 +39,14 @@ class User(db.Model):
             'id': self.id,
             'username': self.username,
             'email': self.email,
+            'full_name': self.full_name,
             'phone_number': self.phone_number,
+            'address': self.address,
+            'pin_code': self.pin_code,
             'role': self.role,
             'is_active': self.is_active,
             'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
             'last_login': self.last_login.isoformat() if self.last_login else None
         }
 
