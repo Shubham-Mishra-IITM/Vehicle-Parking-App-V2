@@ -292,56 +292,30 @@ def get_parking_spots(lot_id):
 @admin_bp.route('/reservations', methods=['GET'])
 @admin_required
 def get_all_reservations():
-    """Get all reservations with enhanced details"""
+    """Get all reservations"""
     try:
         from models.reservation import Reservation
-        from models.parking_spot import ParkingSpot
-        from models.parking_lot import ParkingLot
-        from models.user import User
-        from database import db
         
         page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 10, type=int)
-        status_filter = request.args.get('status')
+        per_page = request.args.get('per_page', 25, type=int)
+        status = request.args.get('status')
         
         query = Reservation.query
         
-        if status_filter:
-            query = query.filter(Reservation.status == status_filter)
+        if status:
+            query = query.filter_by(status=status)
         
-        reservations = query.order_by(Reservation.created_at.desc()).paginate(
+        reservations = query.order_by(
+            Reservation.created_at.desc()
+        ).paginate(
             page=page, per_page=per_page, error_out=False
         )
         
-        # Format reservations with additional details
-        formatted_reservations = []
-        for reservation in reservations.items:
-            # Get related data
-            user = User.query.get(reservation.user_id)
-            spot = ParkingSpot.query.get(reservation.spot_id)
-            lot = ParkingLot.query.get(spot.lot_id) if spot else None
-            
-            reservation_dict = reservation.to_dict()
-            reservation_dict.update({
-                'user_email': user.email if user else 'Unknown',
-                'user_name': getattr(user, 'full_name', user.email if user else 'Unknown'),
-                'parking_lot_location': lot.location if lot else 'Unknown',
-                'spot_number': spot.spot_number if spot else 'Unknown',
-                'price_per_hour': lot.price_per_hour if lot else 0
-            })
-            
-            formatted_reservations.append(reservation_dict)
-        
         return jsonify({
-            'reservations': formatted_reservations,
-            'pagination': {
-                'page': reservations.page,
-                'pages': reservations.pages,
-                'per_page': reservations.per_page,
-                'total': reservations.total,
-                'has_next': reservations.has_next,
-                'has_prev': reservations.has_prev
-            }
+            'reservations': [r.to_dict() for r in reservations.items],
+            'total': reservations.total,
+            'pages': reservations.pages,
+            'current_page': page
         }), 200
         
     except Exception as e:
@@ -435,11 +409,12 @@ def cancel_reservation(reservation_id):
 @admin_bp.route('/users', methods=['GET'])
 @admin_required
 def get_users():
-    """Get all users"""
+    """Get all non-admin users"""
     try:
         from models.user import User
         
-        users = User.query.all()
+        # Only return users with role 'user', not 'admin'
+        users = User.query.filter_by(role='user').all()
         users_data = []
         
         for user in users:
@@ -525,3 +500,278 @@ def update_user_role(user_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
+
+@admin_bp.route('/test-reminders', methods=['POST'])
+@admin_required
+def test_daily_reminders():
+    """Manually trigger daily reminders for testing"""
+    try:
+        # Import the task function directly and execute it synchronously
+        from tasks.daily_reminders import send_daily_reminders_sync
+        from app import app
+        
+        # Execute the task directly within Flask app context (synchronous)
+        with app.app_context():
+            # Call the task function directly (not via Celery)
+            result = send_daily_reminders_sync()
+            
+            return jsonify({
+                'message': 'Daily reminders executed successfully (synchronous)',
+                'result': result,
+                'status': 'completed'
+            }), 200
+        
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'error': f'Failed to execute reminders: {str(e)}',
+            'traceback': traceback.format_exc()
+        }), 500
+
+@admin_bp.route('/test-reminders-async', methods=['POST'])
+@admin_required
+def test_daily_reminders_async():
+    """Manually trigger daily reminders via Celery (async)"""
+    try:
+        # Import the Celery task directly
+        from tasks.daily_reminders import send_daily_reminders
+        
+        # Trigger the task asynchronously
+        task = send_daily_reminders.delay()
+        
+        return jsonify({
+            'message': 'Daily reminders task triggered successfully via Celery',
+            'task_id': task.id,
+            'status': 'started'
+        }), 200
+        
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'error': f'Failed to trigger reminders: {str(e)}',
+            'traceback': traceback.format_exc()
+        }), 500
+
+@admin_bp.route('/test-new-lot-notifications', methods=['POST'])
+@admin_required
+def test_new_lot_notifications():
+    """Manually trigger new parking lot notifications for testing"""
+    try:
+        from tasks.daily_reminders import send_new_parking_lot_notifications
+        
+        # Trigger the task asynchronously
+        task = send_new_parking_lot_notifications.delay()
+        
+        return jsonify({
+            'message': 'New parking lot notifications task triggered successfully',
+            'task_id': task.id,
+            'status': 'started'
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to trigger notifications: {str(e)}'}), 500
+
+@admin_bp.route('/test-admin-summary', methods=['POST'])
+@admin_required
+def test_admin_summary():
+    """Manually trigger admin daily summary for testing"""
+    try:
+        from tasks.daily_reminders import send_admin_daily_summary
+        
+        # Trigger the task asynchronously
+        task = send_admin_daily_summary.delay()
+        
+        return jsonify({
+            'message': 'Admin daily summary task triggered successfully',
+            'task_id': task.id,
+            'status': 'started'
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to trigger admin summary: {str(e)}'}), 500
+
+@admin_bp.route('/task-status/<task_id>', methods=['GET'])
+@admin_required
+def get_task_status(task_id):
+    """Get the status of a Celery task"""
+    try:
+        from tasks.celery_app import celery
+        
+        task = celery.AsyncResult(task_id)
+        
+        if task.state == 'PENDING':
+            response = {
+                'state': task.state,
+                'status': 'Task is waiting to be processed'
+            }
+        elif task.state == 'PROGRESS':
+            response = {
+                'state': task.state,
+                'status': task.info.get('status', ''),
+                'current': task.info.get('current', 0),
+                'total': task.info.get('total', 1)
+            }
+        elif task.state == 'SUCCESS':
+            response = {
+                'state': task.state,
+                'result': task.result
+            }
+        else:  # FAILURE
+            response = {
+                'state': task.state,
+                'error': str(task.info)
+            }
+        
+        return jsonify(response), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to get task status: {str(e)}'}), 500
+
+@admin_bp.route('/test-monthly-reports', methods=['POST'])
+@admin_required
+def test_monthly_reports():
+    """Test monthly reports functionality"""
+    try:
+        from tasks.monthly_reports import send_monthly_reports_task
+        from datetime import datetime
+        
+        # Get current month/year or from request
+        month = request.json.get('month', datetime.now().month) if request.json else datetime.now().month
+        year = request.json.get('year', datetime.now().year) if request.json else datetime.now().year
+        user_id = request.json.get('user_id') if request.json else None  # Optional - test specific user
+        
+        result = {
+            'success': True,
+            'message': f'Monthly reports test initiated for {month}/{year}',
+            'reports_sent': 0,
+            'errors': []
+        }
+        
+        # Test synchronously for immediate results
+        if user_id:
+            # Test for specific user
+            from models.user import User
+            user = User.query.get(user_id)
+            if not user:
+                return jsonify({'error': 'User not found'}), 404
+            
+            try:
+                from tasks.monthly_reports import generate_monthly_report_data, generate_monthly_report_html, send_email
+                
+                # Generate report data
+                report_data = generate_monthly_report_data(user.id, month, year)
+                
+                # Generate HTML
+                html_content = generate_monthly_report_html(user, report_data, month, year)
+                
+                # Send email
+                subject = f"Monthly Parking Report - {month}/{year}"
+                send_email(user.email, subject, html_content)
+                
+                result['reports_sent'] = 1
+                result['message'] = f'Monthly report sent to {user.username} ({user.email})'
+                result['report_data'] = {
+                    'total_reservations': report_data['total_reservations'],
+                    'completed_reservations': report_data['completed_reservations'],
+                    'total_amount_spent': report_data['total_amount_spent'],
+                    'total_hours_parked': report_data['total_hours_parked']
+                }
+                
+            except Exception as e:
+                result['errors'].append(f'Error sending report to {user.username}: {str(e)}')
+                result['success'] = False
+        else:
+            # Test for all users (limit to first 5 for testing)
+            from models.user import User
+            users = User.query.limit(5).all()
+            
+            for user in users:
+                try:
+                    from tasks.monthly_reports import generate_monthly_report_data, generate_monthly_report_html, send_email
+                    
+                    # Generate report data
+                    report_data = generate_monthly_report_data(user.id, month, year)
+                    
+                    # Only send if user has any activity
+                    if report_data['total_reservations'] > 0:
+                        # Generate HTML
+                        html_content = generate_monthly_report_html(user, report_data, month, year)
+                        
+                        # Send email
+                        subject = f"Monthly Parking Report - {month}/{year}"
+                        send_email(user.email, subject, html_content)
+                        
+                        result['reports_sent'] += 1
+                    
+                except Exception as e:
+                    result['errors'].append(f'Error sending report to {user.username}: {str(e)}')
+            
+            result['message'] = f'Monthly reports test completed. Sent {result["reports_sent"]} reports.'
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@admin_bp.route('/test-monthly-reports-async', methods=['POST'])
+@admin_required
+def test_monthly_reports_async():
+    """Test monthly reports functionality asynchronously"""
+    try:
+        from tasks.monthly_reports import send_monthly_reports_task
+        from datetime import datetime
+        
+        # Get current month/year or from request
+        month = request.json.get('month', datetime.now().month) if request.json else datetime.now().month
+        year = request.json.get('year', datetime.now().year) if request.json else datetime.now().year
+        
+        # Queue the task
+        task = send_monthly_reports_task.delay(month, year)
+        
+        return jsonify({
+            'success': True,
+            'message': f'Monthly reports task queued for {month}/{year}',
+            'task_id': task.id,
+            'status': 'PENDING'
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@admin_bp.route('/preview-monthly-report/<int:user_id>', methods=['GET'])
+@admin_required
+def preview_monthly_report(user_id):
+    """Preview monthly report HTML for a specific user"""
+    try:
+        from models.user import User
+        from tasks.monthly_reports import generate_monthly_report_data, generate_monthly_report_html
+        from datetime import datetime
+        
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        
+        # Get month/year from query params or use current
+        month = int(request.args.get('month', datetime.now().month))
+        year = int(request.args.get('year', datetime.now().year))
+        
+        # Generate report data
+        report_data = generate_monthly_report_data(user.id, month, year)
+        
+        # Generate HTML
+        html_content = generate_monthly_report_html(user, report_data, month, year)
+        
+        # Return HTML for preview
+        return html_content, 200, {'Content-Type': 'text/html'}
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500

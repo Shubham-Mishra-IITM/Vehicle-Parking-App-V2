@@ -1,0 +1,24 @@
+[2025-07-30 22:57:57,017: INFO/MainProcess] Connected to redis://localhost:6379/1
+[2025-07-30 22:57:57,019: INFO/MainProcess] mingle: searching for neighbors
+[2025-07-30 22:57:58,038: INFO/MainProcess] mingle: all alone
+[2025-07-30 22:57:58,075: INFO/MainProcess] celery@Shubhams-MacBook-Air.local ready.
+[2025-07-30 23:00:11,973: INFO/MainProcess] Connected to redis://localhost:6379/1
+[2025-07-30 23:00:11,976: INFO/MainProcess] mingle: searching for neighbors
+[2025-07-30 23:00:12,987: INFO/MainProcess] mingle: all alone
+[2025-07-30 23:00:13,002: INFO/MainProcess] celery@Shubhams-MacBook-Air.local ready.
+[2025-07-30 23:35:43,562: INFO/MainProcess] Connected to redis://localhost:6379/1
+[2025-07-30 23:35:43,566: INFO/MainProcess] mingle: searching for neighbors
+[2025-07-30 23:35:44,592: INFO/MainProcess] mingle: all alone
+[2025-07-30 23:35:44,618: INFO/MainProcess] celery@Shubhams-MacBook-Air.local ready.
+[2025-07-30 23:43:41,864: INFO/MainProcess] Connected to redis://localhost:6379/1
+[2025-07-30 23:43:41,867: INFO/MainProcess] mingle: searching for neighbors
+[2025-07-30 23:43:42,881: INFO/MainProcess] mingle: all alone
+[2025-07-30 23:43:42,913: INFO/MainProcess] celery@Shubhams-MacBook-Air.local ready.
+[2025-07-30 23:52:24,934: INFO/MainProcess] Task tasks.export_csv.generate_user_csv_export[a8af79f0-195e-47ef-b6e5-831a4180494b] received
+[2025-07-30 23:52:25,186: INFO/ForkPoolWorker-7] Task tasks.export_csv.generate_user_csv_export[a8af79f0-195e-47ef-b6e5-831a4180494b] succeeded in 0.22315708300004644s: {'status': 'Export completed successfully', 'file_path': '/Users/shubham/Desktop/Vehicle_Parking_App_V2/vehicle-parking-app-v2/vehicle-parking-app/backend/tasks/../exports/parking_history_abc_20250730_182225.csv', 'filename': 'parking_history_abc_20250730_182225.csv', 'download_url': '/api/user/download-csv/parking_history_abc_20250730_182225.csv', 'records_count': 8, 'generated_at': '2025-07-30T18:22:25.184068'}
+[2025-07-31 00:00:07,547: INFO/MainProcess] Connected to redis://localhost:6379/1
+[2025-07-31 00:00:07,550: INFO/MainProcess] mingle: searching for neighbors
+[2025-07-31 00:00:08,564: INFO/MainProcess] mingle: all alone
+[2025-07-31 00:00:08,579: INFO/MainProcess] celery@Shubhams-MacBook-Air.local ready.
+[2025-07-31 00:23:03,542: INFO/MainProcess] Task tasks.export_csv.generate_user_csv_export[c844091d-d07a-4647-bbdd-23024b600520] received
+[2025-07-31 00:23:03,762: INFO/ForkPoolWorker-7] Task tasks.export_csv.generate_user_csv_export[c844091d-d07a-4647-bbdd-23024b600520] succeeded in 0.18182287500007988s: {'status': 'Export completed successfully', 'file_path': '/Users/shubham/Desktop/Vehicle_Parking_App_V2/vehicle-parking-app-v2/vehicle-parking-app/backend/tasks/../exports/parking_history_shubh_20250730_185303.csv', 'filename': 'parking_history_shubh_20250730_185303.csv', 'download_url': '/api/user/download-csv/parking_history_shubh_20250730_185303.csv', 'records_count': 4, 'generated_at': '2025-07-30T18:53:03.759711'}

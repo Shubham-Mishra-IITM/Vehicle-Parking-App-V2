@@ -1,0 +1,2 @@
+Reservation ID,Parking Lot,Parking Spot,Vehicle Number,Parking Date,Parking Time,Leaving Date,Leaving Time,Duration (Hours),Cost ($),Status,Remarks,Location Address,Lot Price per Hour
+1,Downtown Plaza,P001,TEST123,2025-07-25,16:17:16,,,,10.0,Active,,"123 Main St, Downtown",5.0

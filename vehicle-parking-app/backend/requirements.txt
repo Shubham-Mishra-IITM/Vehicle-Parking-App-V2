@@ -25,6 +25,9 @@ secure-smtplib==0.1.1
 # HTTP requests (for webhooks)
 requests==2.31.0
 
+# SMS functionality (Twilio)
+twilio==8.5.0
+
 # Environment variables
 python-dotenv==1.0.0
 

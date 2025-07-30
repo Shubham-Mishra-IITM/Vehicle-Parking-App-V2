@@ -66,14 +66,37 @@ def user_dashboard():
             status='completed'
         ).scalar() or 0
         
-        # Get recent reservations
-        recent_reservations = Reservation.query.filter_by(
-            user_id=user_id
-        ).order_by(
-            Reservation.created_at.desc()
-        ).limit(5).all()
-        
-        # Get monthly statistics (last 6 months)
+        # Get recent activity - Fixed query
+        recent_activity = []
+        try:
+            # Simple approach: get user's recent reservations
+            recent_reservations = Reservation.query.filter_by(user_id=user_id).order_by(Reservation.created_at.desc()).limit(5).all()
+            
+            for reservation in recent_reservations:
+                try:
+                    from models.parking_spot import ParkingSpot
+                    spot = ParkingSpot.query.get(reservation.spot_id)
+                    lot_name = "Unknown Lot"
+                    if spot:
+                        lot = ParkingLot.query.get(spot.lot_id)
+                        if lot:
+                            lot_name = lot.prime_location_name or f"Lot {lot.id}"
+                    
+                    recent_activity.append({
+                        'id': reservation.id,
+                        'spot_number': spot.spot_number if spot else reservation.spot_id,
+                        'lot_name': lot_name,
+                        'status': reservation.status,
+                        'start_time': reservation.start_time.isoformat() if reservation.start_time else None,
+                        'end_time': reservation.end_time.isoformat() if reservation.end_time else None,
+                        'parking_cost': float(reservation.parking_cost) if reservation.parking_cost else 0,
+                        'created_at': reservation.created_at.isoformat() if reservation.created_at else None
+                    })
+                except:
+                    continue
+        except Exception as e:
+            print(f"Error getting recent activity: {e}")
+            recent_activity = []        # Get monthly statistics (last 6 months)
         monthly_stats = []
         for i in range(6):
             month_date = datetime.now() - timedelta(days=30 * i)
@@ -98,22 +121,34 @@ def user_dashboard():
                 'amount_spent': float(month_spent)
             })
         
-        # Get most used parking lot
-        most_used_lot = db.session.query(
-            ParkingLot.prime_location_name,
-            func.count(Reservation.id).label('usage_count')
-        ).join(
-            Reservation,
-            Reservation.spot_id.in_(
-                db.session.query(func.distinct(Reservation.spot_id))
-                .join(ParkingLot)
-                .filter(Reservation.user_id == user_id)
-            )
-        ).group_by(
-            ParkingLot.id
-        ).order_by(
-            func.count(Reservation.id).desc()
-        ).first()
+        # Get most used parking lot - Fixed query
+        most_used_lot_data = None
+        try:
+            # Simple approach: get all user reservations and calculate in Python
+            user_reservations = Reservation.query.filter_by(user_id=user_id).all()
+            lot_usage = {}
+            
+            for reservation in user_reservations:
+                try:
+                    from models.parking_spot import ParkingSpot
+                    spot = ParkingSpot.query.get(reservation.spot_id)
+                    if spot:
+                        lot = ParkingLot.query.get(spot.lot_id)
+                        if lot:
+                            lot_name = lot.prime_location_name or f"Lot {lot.id}"
+                            lot_usage[lot_name] = lot_usage.get(lot_name, 0) + 1
+                except:
+                    continue
+            
+            if lot_usage:
+                most_used_lot_name = max(lot_usage.items(), key=lambda x: x[1])
+                most_used_lot_data = {
+                    'name': most_used_lot_name[0],
+                    'usage_count': most_used_lot_name[1]
+                }
+        except Exception as e:
+            print(f"Error calculating most used lot: {e}")
+            most_used_lot_data = None
         
         # Get status distribution for pie chart
         status_distribution = db.session.query(
@@ -121,19 +156,42 @@ def user_dashboard():
             func.count(Reservation.id).label('count')
         ).filter_by(user_id=user_id).group_by(Reservation.status).all()
         
-        # Get parking lot usage statistics for bar chart
-        lot_usage_stats = db.session.query(
-            ParkingLot.prime_location_name,
-            func.count(Reservation.id).label('reservations'),
-            func.sum(Reservation.parking_cost).label('total_spent')
-        ).join(
-            Reservation,
-            Reservation.spot_id.in_(
-                db.session.query(Reservation.spot_id).filter(
-                    Reservation.user_id == user_id
-                )
-            )
-        ).group_by(ParkingLot.id).limit(5).all()
+        # Get parking lot usage statistics for bar chart - Fixed query
+        lot_usage_stats = []
+        try:
+            # Simple approach: calculate in Python
+            user_reservations = Reservation.query.filter_by(user_id=user_id).all()
+            lot_stats = {}
+            
+            for reservation in user_reservations:
+                try:
+                    from models.parking_spot import ParkingSpot
+                    spot = ParkingSpot.query.get(reservation.spot_id)
+                    if spot:
+                        lot = ParkingLot.query.get(spot.lot_id)
+                        if lot:
+                            lot_name = lot.prime_location_name or f"Lot {lot.id}"
+                            if lot_name not in lot_stats:
+                                lot_stats[lot_name] = {'reservations': 0, 'total_spent': 0}
+                            
+                            lot_stats[lot_name]['reservations'] += 1
+                            if reservation.status == 'completed' and reservation.parking_cost:
+                                lot_stats[lot_name]['total_spent'] += float(reservation.parking_cost)
+                except:
+                    continue
+            
+            # Convert to list format expected by frontend
+            lot_usage_stats = [
+                {
+                    'lot_name': lot_name,
+                    'reservations': stats['reservations'],
+                    'total_spent': float(stats['total_spent'])
+                }
+                for lot_name, stats in sorted(lot_stats.items(), key=lambda x: x[1]['reservations'], reverse=True)[:5]
+            ]
+        except Exception as e:
+            print(f"Error calculating lot usage stats: {e}")
+            lot_usage_stats = []
         
         # Get weekly activity for the last 4 weeks
         weekly_stats = []
@@ -177,18 +235,12 @@ def user_dashboard():
                 {'status': status, 'count': count} 
                 for status, count in status_distribution
             ],
-            'lot_usage_stats': [
-                {
-                    'lot_name': lot_name, 
-                    'reservations': reservations,
-                    'total_spent': float(total_spent or 0)
-                }
-                for lot_name, reservations, total_spent in lot_usage_stats
-            ],
+            'lot_usage_stats': lot_usage_stats,
             'most_used_lot': {
-                'name': most_used_lot[0] if most_used_lot else None,
-                'usage_count': most_used_lot[1] if most_used_lot else 0
-            }
+                'name': most_used_lot_data['name'] if most_used_lot_data else None,
+                'usage_count': most_used_lot_data['usage_count'] if most_used_lot_data else 0
+            },
+            'recent_activity': recent_activity
         }), 200
         
     except Exception as e:
@@ -319,7 +371,7 @@ def change_password():
 @user_bp.route('/export-csv', methods=['POST'])
 @token_required
 def export_reservations_csv():
-    """Export user's reservations as CSV (async job trigger)"""
+    """Export user's complete parking history as CSV (async job trigger)"""
     try:
         from tasks.export_csv import generate_user_csv_export
         from models.user import User
@@ -332,9 +384,11 @@ def export_reservations_csv():
         task = generate_user_csv_export.delay(request.current_user_id)
         
         return jsonify({
-            'message': 'CSV export job started',
+            'message': 'CSV export job started successfully! 📊',
+            'description': 'Your complete parking history is being exported. You will receive an email notification once ready.',
             'task_id': task.id,
-            'status': 'processing'
+            'status': 'processing',
+            'estimated_time': '1-2 minutes'
         }), 202
         
     except Exception as e:
@@ -343,7 +397,7 @@ def export_reservations_csv():
 @user_bp.route('/export-status/<task_id>', methods=['GET'])
 @token_required
 def get_export_status(task_id):
-    """Get status of CSV export job"""
+    """Get detailed status of CSV export job with progress tracking"""
     try:
         from tasks.export_csv import generate_user_csv_export
         
@@ -352,30 +406,79 @@ def get_export_status(task_id):
         if task.state == 'PENDING':
             response = {
                 'state': task.state,
-                'status': 'Job is waiting to be processed'
+                'status': 'Job is queued and waiting to be processed...',
+                'progress': 0,
+                'message': 'Your export request is in the queue.'
             }
         elif task.state == 'PROGRESS':
+            progress_info = task.info or {}
             response = {
                 'state': task.state,
-                'status': task.info.get('status', ''),
-                'current': task.info.get('current', 0),
-                'total': task.info.get('total', 1)
+                'status': progress_info.get('status', 'Processing...'),
+                'current': progress_info.get('current', 0),
+                'total': progress_info.get('total', 100),
+                'progress': int((progress_info.get('current', 0) / progress_info.get('total', 100)) * 100),
+                'message': 'Export in progress. Please wait...'
             }
         elif task.state == 'SUCCESS':
+            result = task.result or {}
             response = {
                 'state': task.state,
-                'status': 'Export completed successfully',
-                'download_url': task.result.get('download_url'),
-                'file_path': task.result.get('file_path')
+                'status': 'Export completed successfully! 🎉',
+                'progress': 100,
+                'download_url': result.get('download_url'),
+                'filename': result.get('filename'),
+                'records_count': result.get('records_count', 0),
+                'generated_at': result.get('generated_at'),
+                'message': f'Your parking history ({result.get("records_count", 0)} records) has been exported successfully! Check your email for the download link.'
             }
         else:  # FAILURE
             response = {
                 'state': task.state,
-                'status': 'Export failed',
-                'error': str(task.info)
+                'status': 'Export failed ❌',
+                'progress': 0,
+                'error': str(task.info) if task.info else 'Unknown error occurred',
+                'message': 'Export failed. Please try again or contact support.'
             }
         
         return jsonify(response), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@user_bp.route('/download-csv/<filename>', methods=['GET'])
+@token_required
+def download_csv_file(filename):
+    """Download the generated CSV file"""
+    try:
+        from flask import send_file
+        import os
+        
+        # Validate filename to prevent directory traversal
+        if '..' in filename or '/' in filename:
+            return jsonify({'error': 'Invalid filename'}), 400
+        
+        # Construct file path
+        exports_dir = os.path.join(os.path.dirname(__file__), '..', 'exports')
+        file_path = os.path.join(exports_dir, filename)
+        
+        # Check if file exists
+        if not os.path.exists(file_path):
+            return jsonify({'error': 'File not found or has expired'}), 404
+        
+        # Check if file belongs to current user (filename should contain username)
+        from models.user import User
+        user = User.query.get(request.current_user_id)
+        if not user or user.username not in filename:
+            return jsonify({'error': 'Access denied'}), 403
+        
+        # Send file
+        return send_file(
+            file_path,
+            as_attachment=True,
+            download_name=filename,
+            mimetype='text/csv'
+        )
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -858,6 +961,107 @@ def debug_spot_status():
             'inconsistent_spots_count': len(inconsistent_spots),
             'inconsistent_spots': inconsistent_spots,
             'all_spots': spots_info
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@user_bp.route('/monthly-report', methods=['GET'])
+@token_required
+def get_monthly_report():
+    """Get monthly report for the current user"""
+    try:
+        from models.user import User
+        from tasks.monthly_reports import generate_monthly_report_data, generate_monthly_report_html
+        from datetime import datetime
+        
+        user_id = request.current_user_id
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        
+        # Get month/year from query params or use current
+        month = int(request.args.get('month', datetime.now().month))
+        year = int(request.args.get('year', datetime.now().year))
+        
+        # Validate month/year
+        if not (1 <= month <= 12):
+            return jsonify({'error': 'Invalid month. Must be between 1 and 12'}), 400
+        if year < 2020 or year > datetime.now().year:
+            return jsonify({'error': 'Invalid year'}), 400
+        
+        # Generate report data
+        report_data = generate_monthly_report_data(user.id, month, year)
+        
+        # Check if user wants HTML format
+        format_type = request.args.get('format', 'json')
+        
+        if format_type == 'html':
+            # Generate HTML report
+            html_content = generate_monthly_report_html(user, report_data, month, year)
+            return html_content, 200, {'Content-Type': 'text/html'}
+        else:
+            # Return JSON data
+            return jsonify({
+                'month': month,
+                'year': year,
+                'user': user.username,
+                'report_data': report_data
+            }), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@user_bp.route('/monthly-reports/history', methods=['GET'])
+@token_required
+def get_monthly_reports_history():
+    """Get available monthly reports for the user"""
+    try:
+        from models.user import User
+        from models.reservation import Reservation
+        from sqlalchemy import func, extract
+        from database import db
+        
+        user_id = request.current_user_id
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        
+        # Get all months where user had reservations
+        months_with_activity = db.session.query(
+            extract('year', Reservation.created_at).label('year'),
+            extract('month', Reservation.created_at).label('month'),
+            func.count(Reservation.id).label('reservation_count')
+        ).filter(
+            Reservation.user_id == user_id
+        ).group_by(
+            extract('year', Reservation.created_at),
+            extract('month', Reservation.created_at)
+        ).order_by(
+            extract('year', Reservation.created_at).desc(),
+            extract('month', Reservation.created_at).desc()
+        ).all()
+        
+        month_names = [
+            '', 'January', 'February', 'March', 'April', 'May', 'June',
+            'July', 'August', 'September', 'October', 'November', 'December'
+        ]
+        
+        available_reports = []
+        for record in months_with_activity:
+            year, month, count = int(record.year), int(record.month), record.reservation_count
+            available_reports.append({
+                'year': year,
+                'month': month,
+                'month_name': month_names[month],
+                'reservation_count': count,
+                'report_url': f'/api/user/monthly-report?month={month}&year={year}&format=html'
+            })
+        
+        return jsonify({
+            'user': user.username,
+            'available_reports': available_reports,
+            'total_months': len(available_reports)
         }), 200
         
     except Exception as e:

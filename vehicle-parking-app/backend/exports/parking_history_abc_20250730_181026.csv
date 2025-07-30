@@ -1,0 +1,9 @@
+Reservation ID,Parking Lot,Parking Spot,Vehicle Number,Parking Date,Parking Time,Leaving Date,Leaving Time,Duration (Hours),Cost ($),Status,Remarks,Location Address,Lot Price per Hour
+14,Shopping Mall,P001,1234,2025-07-29,17:15:24,,,,9.0,Active,,"321 Mall Dr, Shopping District",4.5
+13,Airport Terminal,P003,123,2025-07-29,11:31:22,,,,8.0,Active,,"456 Airport Blvd, Terminal A",8.0
+12,Shopping Mall,P003,1234,2025-07-26,16:48:09,2025-07-26,17:12:05,0.4,4.5,Completed,,"321 Mall Dr, Shopping District",4.5
+11,Shopping Mall,P001,12,2025-07-29,11:29:53,2025-07-29,16:50:43,5.35,24.06,Completed,,"321 Mall Dr, Shopping District",4.5
+10,Shopping Mall,P002,123,2025-07-26,14:50:13,2025-07-26,15:15:49,0.43,4.5,Completed,,"321 Mall Dr, Shopping District",4.5
+9,Shopping Mall,P001,1234,2025-07-26,12:23:56,2025-07-26,14:23:53,2.0,9.0,Completed,,"321 Mall Dr, Shopping District",4.5
+4,University Campus,P001,123,2025-07-26,09:50:33,2025-07-26,12:36:39,2.77,8.3,Completed,,"789 College Ave, Campus North",3.0
+3,Baker Street,P001,123,2025-07-26,09:48:43,,,,30.0,Cancelled,,"221, B, Baker Street, London",10.0

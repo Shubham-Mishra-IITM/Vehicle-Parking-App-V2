@@ -294,8 +294,20 @@
     <div class="row">
       <div class="col-12">
         <div class="card">
-          <div class="card-header">
+          <div class="card-header d-flex justify-content-between align-items-center">
             <h5 class="mb-0">Reservation History</h5>
+            <div class="d-flex gap-2">
+              <button 
+                class="btn btn-outline-success btn-sm" 
+                @click="exportToCSV" 
+                :disabled="csvExportStatus.loading || reservationHistory.length === 0"
+                :title="reservationHistory.length === 0 ? 'No data to export' : 'Export parking history to CSV file'"
+              >
+                <span v-if="csvExportStatus.loading" class="spinner-border spinner-border-sm me-1" role="status"></span>
+                <i v-else class="fas fa-download me-1"></i>
+                {{ csvExportStatus.loading ? 'Exporting...' : 'Export CSV' }}
+              </button>
+            </div>
           </div>
           <div class="card-body">
             <div v-if="reservationHistory.length === 0" class="text-center text-muted">
@@ -471,7 +483,7 @@
 </template>
 
 <script>
-import { ref, onMounted, computed, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationStore } from '@/stores/notification'
 import { formatINR } from '@/utils/currency'
@@ -489,6 +501,13 @@ export default {
     const loading = ref(true)
     const booking = ref(false)
     const selectedReservation = ref(null)
+    
+    // CSV Export functionality
+    const csvExportStatus = ref({
+      loading: false,
+      taskId: null,
+      pollInterval: null
+    })
     
     const bookingForm = ref({
       parking_lot_id: '',
@@ -904,6 +923,82 @@ Thank you for using our parking service!
       window.URL.revokeObjectURL(url)
       
       notificationStore.success('Receipt downloaded successfully!')
+    }
+
+    // CSV Export functionality
+    const exportToCSV = async () => {
+      if (csvExportStatus.value.loading) return
+      
+      try {
+        csvExportStatus.value.loading = true
+        notificationStore.info('Initiating CSV export...')
+        
+        // Trigger CSV export
+        const response = await api.post('/user/export-csv')
+        
+        if (response.data && response.data.task_id) {
+          csvExportStatus.value.taskId = response.data.task_id
+          notificationStore.success('CSV export started! You will receive an email when it\'s ready.')
+          
+          // Poll for status updates
+          pollExportStatus()
+        } else {
+          throw new Error('No task ID received')
+        }
+        
+      } catch (error) {
+        console.error('CSV export error:', error)
+        notificationStore.error(error.response?.data?.message || 'Failed to initiate CSV export')
+        csvExportStatus.value.loading = false
+      }
+    }
+
+    const pollExportStatus = async () => {
+      if (!csvExportStatus.value.taskId) return
+      
+      const maxAttempts = 20 // Poll for up to 2 minutes (6s * 20)
+      let attempts = 0
+      
+      csvExportStatus.value.pollInterval = setInterval(async () => {
+        attempts++
+        
+        try {
+          const response = await api.get(`/user/export-status/${csvExportStatus.value.taskId}`)
+          const status = response.data
+          
+          if (status.state === 'SUCCESS') {
+            clearInterval(csvExportStatus.value.pollInterval)
+            csvExportStatus.value.loading = false
+            csvExportStatus.value.taskId = null
+            
+            notificationStore.success(`✅ CSV export completed! File: ${status.filename}. Check your email for the attachment.`)
+            
+          } else if (status.state === 'FAILURE') {
+            clearInterval(csvExportStatus.value.pollInterval)
+            csvExportStatus.value.loading = false
+            csvExportStatus.value.taskId = null
+            
+            notificationStore.error(`❌ CSV export failed: ${status.result || 'Unknown error'}`)
+            
+          } else if (attempts >= maxAttempts) {
+            clearInterval(csvExportStatus.value.pollInterval)
+            csvExportStatus.value.loading = false
+            csvExportStatus.value.taskId = null
+            
+            notificationStore.warning('⏰ Export status polling timed out. Check your email in a few minutes.')
+          }
+          
+        } catch (error) {
+          console.error('Status polling error:', error)
+          
+          if (attempts >= maxAttempts) {
+            clearInterval(csvExportStatus.value.pollInterval)
+            csvExportStatus.value.loading = false
+            csvExportStatus.value.taskId = null
+          }
+        }
+        
+      }, 6000) // Poll every 6 seconds
     }
 
     const createCharts = async () => {
@@ -1540,6 +1635,13 @@ Thank you for using our parking service!
       }
     })
 
+    // Cleanup polling interval on component unmount
+    onUnmounted(() => {
+      if (csvExportStatus.value.pollInterval) {
+        clearInterval(csvExportStatus.value.pollInterval)
+      }
+    })
+
     return {
       authStore,
       availableLots,
@@ -1570,6 +1672,8 @@ Thank you for using our parking service!
       showCostBreakdown,
       calculateSubtotal,
       downloadReceipt,
+      csvExportStatus,
+      exportToCSV,
       createCharts,
       formatINR
     }

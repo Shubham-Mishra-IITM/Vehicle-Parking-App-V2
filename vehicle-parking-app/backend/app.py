@@ -53,6 +53,25 @@ except Exception as e:
 # Enable CORS
 CORS(app)
 
+# Initialize Celery with Flask app
+try:
+    from tasks.celery_app import make_celery
+    celery = make_celery(app.import_name)
+    
+    # Ensure correct Redis URL for local development
+    celery.conf.update(
+        broker_url='redis://localhost:6379/1',
+        result_backend='redis://localhost:6379/1'
+    )
+    
+    app.celery = celery  # Make Celery available to the Flask app
+    print("✅ Celery initialized with Flask app!")
+    print(f"✅ Celery broker: {celery.conf.broker_url}")
+except Exception as e:
+    print(f"⚠️  Celery initialization failed: {e}")
+    celery = None
+    app.celery = None
+
 # Register routes
 try:
     from routes import register_routes

@@ -101,30 +101,34 @@ def generate_user_csv_export(self, user_id):
         }
 
 def generate_csv_data(reservations):
-    """Generate CSV data from reservations"""
+    """Generate comprehensive CSV data from reservations with detailed parking information"""
     output = io.StringIO()
     writer = csv.writer(output)
     
-    # Write header
+    # Write header - Enhanced format with requested fields
     headers = [
         'Reservation ID',
-        'Parking Lot',
-        'Parking Spot',
+        'Slot ID (Lot ID)',
+        'Spot ID',
+        'Spot Number',
+        'Parking Lot Name',
+        'Location Address',
         'Vehicle Number',
-        'Parking Date',
-        'Parking Time',
-        'Leaving Date',
-        'Leaving Time',
+        'Created Date',
+        'Created Time',
+        'Parking Timestamp',
+        'Leaving Timestamp',
         'Duration (Hours)',
-        'Cost ($)',
+        'Cost (Rs.)',
+        'Hourly Rate (Rs.)',
         'Status',
         'Remarks',
-        'Location Address',
-        'Lot Price per Hour'
+        'Payment Status',
+        'Booking Type'
     ]
     writer.writerow(headers)
     
-    # Write data rows
+    # Write data rows with comprehensive information
     for reservation in reservations:
         from models.parking_spot import ParkingSpot
         from models.parking_lot import ParkingLot
@@ -133,54 +137,101 @@ def generate_csv_data(reservations):
         spot = ParkingSpot.query.get(reservation.spot_id)
         lot = ParkingLot.query.get(spot.lot_id) if spot else None
         
-        # Format dates and times
-        parking_date = reservation.parking_timestamp.strftime('%Y-%m-%d') if reservation.parking_timestamp else ''
-        parking_time = reservation.parking_timestamp.strftime('%H:%M:%S') if reservation.parking_timestamp else ''
+        # Format timestamps with full ISO format
+        created_datetime = reservation.created_at.strftime('%Y-%m-%d %H:%M:%S') if reservation.created_at else ''
+        created_date = reservation.created_at.strftime('%Y-%m-%d') if reservation.created_at else ''
+        created_time = reservation.created_at.strftime('%H:%M:%S') if reservation.created_at else ''
         
-        leaving_date = reservation.leaving_timestamp.strftime('%Y-%m-%d') if reservation.leaving_timestamp else ''
-        leaving_time = reservation.leaving_timestamp.strftime('%H:%M:%S') if reservation.leaving_timestamp else ''
+        parking_timestamp = reservation.parking_timestamp.strftime('%Y-%m-%d %H:%M:%S') if reservation.parking_timestamp else ''
+        leaving_timestamp = reservation.leaving_timestamp.strftime('%Y-%m-%d %H:%M:%S') if reservation.leaving_timestamp else ''
+        
+        # Determine payment status based on reservation status
+        payment_status = 'Paid' if reservation.status == 'completed' else 'Pending' if reservation.status == 'active' else 'Cancelled'
+        
+        # Determine booking type
+        booking_type = 'Online Booking'  # Since all bookings are through the app
         
         row = [
             reservation.id,
-            lot.prime_location_name if lot else 'Unknown',
-            spot.spot_number if spot else 'Unknown',
-            reservation.vehicle_number,
-            parking_date,
-            parking_time,
-            leaving_date,
-            leaving_time,
-            float(reservation.total_hours) if reservation.total_hours else '',
-            float(reservation.parking_cost) if reservation.parking_cost else '',
+            spot.lot_id if spot else 'N/A',
+            reservation.spot_id,
+            spot.spot_number if spot else 'N/A',
+            lot.prime_location_name if lot else 'Unknown Location',
+            lot.address if lot else 'Unknown Address',
+            reservation.vehicle_number or 'N/A',
+            created_date,
+            created_time,
+            parking_timestamp,
+            leaving_timestamp,
+            float(reservation.total_hours) if reservation.total_hours else 0.0,
+            float(reservation.parking_cost) if reservation.parking_cost else 0.0,
+            float(lot.price) if lot else 0.0,
             reservation.status.title(),
             reservation.remarks or '',
-            lot.address if lot else '',
-            float(lot.price) if lot else ''
+            payment_status,
+            booking_type
         ]
         writer.writerow(row)
     
     return output.getvalue()
 
 def send_csv_export_email(user, file_path, filename):
-    """Send email with CSV export attachment"""
-    subject = "Your Parking History Export is Ready!"
+    """Send email with CSV export attachment and detailed information"""
+    subject = "🚗 Your Parking History Export is Ready!"
     
-    # Create email body
+    # Get file stats
+    file_size = os.path.getsize(file_path) / 1024  # Size in KB
+    
+    # Create enhanced email body
     body = f"""
     Hi {user.username},
 
-    Your parking history export has been generated successfully!
+    Great news! Your complete parking history export has been generated successfully! 📊
 
-    The CSV file contains all your parking reservations with detailed information including:
-    - Reservation details
-    - Parking locations and spots
-    - Duration and costs
-    - Dates and times
-    - Status and remarks
+    📁 Export Details:
+    • File Name: {filename}
+    • File Size: {file_size:.1f} KB
+    • Generated: {datetime.utcnow().strftime('%B %d, %Y at %I:%M %p UTC')}
 
-    Please find the exported data attached to this email.
+    📋 The CSV file contains comprehensive information about all your parking sessions:
+    
+    ✅ Basic Information:
+    • Reservation ID and booking details
+    • Slot ID (Lot ID) and Spot ID
+    • Parking lot names and addresses
+    • Vehicle numbers used
+    
+    ⏰ Timing Information:
+    • Booking creation timestamps
+    • Parking start and end times
+    • Duration of each parking session
+    
+    💰 Financial Information:
+    • Parking costs in Rs.
+    • Hourly rates for each location
+    • Payment status for each booking
+    
+    📍 Location & Status Details:
+    • Parking spot numbers
+    • Exact location addresses
+    • Booking status (Completed/Active/Cancelled)
+    • Any remarks or notes
+    
+    💡 This export includes your entire parking history till date and can be used for:
+    • Personal expense tracking
+    • Tax records and documentation
+    • Analysis of your parking patterns
+    • Backup of your parking data
+
+    The CSV file is attached to this email and can be opened with Excel, Google Sheets, or any spreadsheet application.
+
+    If you have any questions about your parking data or need assistance, please don't hesitate to contact our support team.
+
+    Thank you for using our parking service! 🅿️
 
     Best regards,
     Parking App Team
+    📧 support@parkingapp.com
     """
     
     # Create message
@@ -192,25 +243,39 @@ def send_csv_export_email(user, file_path, filename):
     # Add body to email
     msg.attach(MIMEText(body, 'plain'))
     
-    # Add CSV file as attachment
+    # Add CSV file as attachment with proper MIME type
     with open(file_path, 'rb') as attachment:
-        part = MIMEBase('application', 'octet-stream')
+        part = MIMEBase('text', 'csv')  # Better MIME type for CSV files
         part.set_payload(attachment.read())
     
     encoders.encode_base64(part)
     part.add_header(
         'Content-Disposition',
-        f'attachment; filename= {filename}'
+        f'attachment; filename="{filename}"'  # Proper filename quoting
     )
     msg.attach(part)
     
     # Send email
-    with smtplib.SMTP(Config.MAIL_SERVER, Config.MAIL_PORT) as server:
-        if Config.MAIL_USE_TLS:
-            server.starttls()
-        if Config.MAIL_USERNAME and Config.MAIL_PASSWORD:
-            server.login(Config.MAIL_USERNAME, Config.MAIL_PASSWORD)
-        server.send_message(msg)
+    try:
+        # Handle MailHog vs real SMTP servers differently
+        if Config.MAIL_SERVER == 'localhost' or Config.MAIL_PORT == 1025:
+            # MailHog - simple connection without TLS
+            server = smtplib.SMTP()
+            server.connect(Config.MAIL_SERVER or 'localhost', Config.MAIL_PORT or 1025)
+            server.send_message(msg)
+            server.quit()
+        else:
+            # Real SMTP server - use TLS and authentication
+            with smtplib.SMTP(Config.MAIL_SERVER, Config.MAIL_PORT) as server:
+                if Config.MAIL_USE_TLS:
+                    server.starttls()
+                if Config.MAIL_USERNAME and Config.MAIL_PASSWORD:
+                    server.login(Config.MAIL_USERNAME, Config.MAIL_PASSWORD)
+                server.send_message(msg)
+    except Exception as e:
+        print(f"Email sending error: {e}")
+        # Don't fail the entire task if email fails
+        pass
 
 def cleanup_old_exports(exports_dir, days_to_keep=7):
     """Clean up old export files"""
