@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, current_app
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from functools import wraps
-import jwt
+from utils.cache_enhanced import cached_endpoint, invalidate_cache
 
 admin_bp = Blueprint('admin', __name__)
 
@@ -8,34 +9,30 @@ def admin_required(f):
     """Decorator to require admin authentication"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        token = request.headers.get('Authorization')
-        if not token:
-            return jsonify({'error': 'Token is missing'}), 401
+        # Get user ID from JWT
+        current_user_id = get_jwt_identity()
+        if not current_user_id:
+            return jsonify({'error': 'Authentication required'}), 401
         
-        try:
-            if token.startswith('Bearer '):
-                token = token[7:]
+        # Get additional claims from JWT
+        claims = get_jwt()
+        user_role = claims.get('role', 'user')
+        
+        if user_role != 'admin':
+            return jsonify({'error': 'Admin access required'}), 403
             
-            payload = jwt.decode(token, current_app.config['SECRET_KEY'], algorithms=['HS256'])
-            
-            if payload.get('role') != 'admin':
-                return jsonify({'error': 'Admin access required'}), 403
-                
-            request.current_user_id = payload['user_id']
-            request.current_user_role = payload['role']
-            
-        except jwt.ExpiredSignatureError:
-            return jsonify({'error': 'Token has expired'}), 401
-        except jwt.InvalidTokenError:
-            return jsonify({'error': 'Invalid token'}), 401
-        except Exception as e:
-            return jsonify({'error': str(e)}), 500
-            
+        # Store in request context for use in route handlers
+        request.current_user_id = int(current_user_id)
+        request.current_user_role = user_role
+        
         return f(*args, **kwargs)
     return decorated_function
 
 @admin_bp.route('/dashboard', methods=['GET'])
+@jwt_required()
+@jwt_required()
 @admin_required
+@cached_endpoint('admin_dashboard', timeout=180)
 def admin_dashboard():
     """Get admin dashboard data"""
     try:
@@ -92,6 +89,7 @@ def admin_dashboard():
         return jsonify({'error': str(e)}), 500
 
 @admin_bp.route('/parking-lots', methods=['GET'])
+@jwt_required()
 @admin_required
 def get_parking_lots():
     """Get all parking lots"""
@@ -105,6 +103,7 @@ def get_parking_lots():
         return jsonify({'error': str(e)}), 500
 
 @admin_bp.route('/parking-lots', methods=['POST'])
+@jwt_required()
 @admin_required
 def create_parking_lot():
     """Create a new parking lot"""
@@ -165,6 +164,7 @@ def create_parking_lot():
         return jsonify({'error': str(e)}), 500
 
 @admin_bp.route('/parking-lots/<int:lot_id>', methods=['PUT'])
+@jwt_required()
 @admin_required
 def update_parking_lot(lot_id):
     """Update a parking lot"""
@@ -241,6 +241,7 @@ def update_parking_lot(lot_id):
         return jsonify({'error': str(e)}), 500
 
 @admin_bp.route('/parking-lots/<int:lot_id>', methods=['DELETE'])
+@jwt_required()
 @admin_required
 def delete_parking_lot(lot_id):
     """Delete a parking lot"""
@@ -277,6 +278,7 @@ def delete_parking_lot(lot_id):
         return jsonify({'error': str(e)}), 500
 
 @admin_bp.route('/parking-lots/<int:lot_id>/spots', methods=['GET'])
+@jwt_required()
 @admin_required
 def get_parking_spots(lot_id):
     """Get all parking spots for a specific lot"""
@@ -290,7 +292,9 @@ def get_parking_spots(lot_id):
         return jsonify({'error': str(e)}), 500
 
 @admin_bp.route('/reservations', methods=['GET'])
+@jwt_required()
 @admin_required
+@cached_endpoint('admin_reservations', timeout=120)
 def get_all_reservations():
     """Get all reservations"""
     try:
@@ -322,6 +326,7 @@ def get_all_reservations():
         return jsonify({'error': str(e)}), 500
 
 @admin_bp.route('/reservations/<int:reservation_id>/complete', methods=['PUT'])
+@jwt_required()
 @admin_required
 def complete_reservation(reservation_id):
     """Complete a reservation manually"""
@@ -373,6 +378,7 @@ def complete_reservation(reservation_id):
         return jsonify({'error': str(e)}), 500
 
 @admin_bp.route('/reservations/<int:reservation_id>', methods=['DELETE'])
+@jwt_required()
 @admin_required
 def cancel_reservation(reservation_id):
     """Cancel a reservation"""
@@ -407,7 +413,9 @@ def cancel_reservation(reservation_id):
         return jsonify({'error': str(e)}), 500
 
 @admin_bp.route('/users', methods=['GET'])
+@jwt_required()
 @admin_required
+@cached_endpoint('admin_users', timeout=300)
 def get_users():
     """Get all non-admin users"""
     try:
@@ -427,6 +435,7 @@ def get_users():
         return jsonify({'error': str(e)}), 500
 
 @admin_bp.route('/users/<int:user_id>/statistics', methods=['GET'])
+@jwt_required()
 @admin_required
 def get_user_statistics(user_id):
     """Get statistics for a specific user"""
@@ -468,6 +477,7 @@ def get_user_statistics(user_id):
         return jsonify({'error': str(e)}), 500
 
 @admin_bp.route('/users/<int:user_id>/role', methods=['PUT'])
+@jwt_required()
 @admin_required
 def update_user_role(user_id):
     """Update user role"""
@@ -502,6 +512,7 @@ def update_user_role(user_id):
         return jsonify({'error': str(e)}), 500
 
 @admin_bp.route('/test-reminders', methods=['POST'])
+@jwt_required()
 @admin_required
 def test_daily_reminders():
     """Manually trigger daily reminders for testing"""
@@ -529,6 +540,7 @@ def test_daily_reminders():
         }), 500
 
 @admin_bp.route('/test-reminders-async', methods=['POST'])
+@jwt_required()
 @admin_required
 def test_daily_reminders_async():
     """Manually trigger daily reminders via Celery (async)"""
@@ -553,6 +565,7 @@ def test_daily_reminders_async():
         }), 500
 
 @admin_bp.route('/test-new-lot-notifications', methods=['POST'])
+@jwt_required()
 @admin_required
 def test_new_lot_notifications():
     """Manually trigger new parking lot notifications for testing"""
@@ -572,6 +585,7 @@ def test_new_lot_notifications():
         return jsonify({'error': f'Failed to trigger notifications: {str(e)}'}), 500
 
 @admin_bp.route('/test-admin-summary', methods=['POST'])
+@jwt_required()
 @admin_required
 def test_admin_summary():
     """Manually trigger admin daily summary for testing"""
@@ -591,6 +605,7 @@ def test_admin_summary():
         return jsonify({'error': f'Failed to trigger admin summary: {str(e)}'}), 500
 
 @admin_bp.route('/task-status/<task_id>', methods=['GET'])
+@jwt_required()
 @admin_required
 def get_task_status(task_id):
     """Get the status of a Celery task"""
@@ -628,6 +643,7 @@ def get_task_status(task_id):
         return jsonify({'error': f'Failed to get task status: {str(e)}'}), 500
 
 @admin_bp.route('/test-monthly-reports', methods=['POST'])
+@jwt_required()
 @admin_required
 def test_monthly_reports():
     """Test monthly reports functionality"""
@@ -717,6 +733,7 @@ def test_monthly_reports():
         }), 500
 
 @admin_bp.route('/test-monthly-reports-async', methods=['POST'])
+@jwt_required()
 @admin_required
 def test_monthly_reports_async():
     """Test monthly reports functionality asynchronously"""
@@ -745,6 +762,7 @@ def test_monthly_reports_async():
         }), 500
 
 @admin_bp.route('/preview-monthly-report/<int:user_id>', methods=['GET'])
+@jwt_required()
 @admin_required
 def preview_monthly_report(user_id):
     """Preview monthly report HTML for a specific user"""
@@ -775,3 +793,349 @@ def preview_monthly_report(user_id):
             'success': False,
             'error': str(e)
         }), 500
+
+@admin_bp.route('/cache/stats', methods=['GET'])
+@jwt_required()
+@admin_required
+def get_cache_stats():
+    """Get Redis cache statistics"""
+    try:
+        from utils.cache_enhanced import cache_manager
+        stats = cache_manager.get_cache_stats()
+        return jsonify({
+            'success': True,
+            'stats': stats
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@admin_bp.route('/cache/clear', methods=['POST'])
+@jwt_required()
+@admin_required
+def clear_cache():
+    """Clear all cache or specific patterns"""
+    try:
+        from utils.cache_enhanced import cache_manager
+        pattern = request.json.get('pattern', '*') if request.json else '*'
+        
+        cleared_count = cache_manager.clear_cache(pattern)
+        
+        return jsonify({
+            'success': True,
+            'message': f'Cleared {cleared_count} cache entries',
+            'pattern': pattern
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@admin_bp.route('/cache/warm', methods=['POST'])
+@jwt_required()
+@admin_required
+def warm_cache():
+    """Warm up cache with frequently accessed data"""
+    try:
+        from utils.cache_enhanced import cache_manager
+        from models.parking_lot import ParkingLot
+        
+        # Warm up parking lots cache
+        lots = ParkingLot.query.all()
+        warmed_keys = []
+        
+        for lot in lots:
+            # Warm up lots endpoint
+            key = f"lots_*"
+            if cache_manager.warm_cache(key, [l.to_dict() for l in lots]):
+                warmed_keys.append(key)
+                break
+        
+        return jsonify({
+            'success': True,
+            'message': f'Warmed up {len(warmed_keys)} cache keys',
+            'keys': warmed_keys
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# ===== PARKING SPOT MANAGEMENT ENDPOINTS =====
+
+@admin_bp.route('/parking-spots/status', methods=['GET'])
+@jwt_required()
+@admin_required
+@cached_endpoint('admin_parking_spots_status', timeout=60)
+def get_all_parking_spots_status():
+    """Get status of all parking spots across all lots with detailed information"""
+    try:
+        from models.parking_spot import ParkingSpot
+        from models.parking_lot import ParkingLot
+        from models.reservation import Reservation
+        from models.user import User
+        from sqlalchemy import func
+        
+        # Get filter parameters
+        lot_id = request.args.get('lot_id', type=int)
+        status_filter = request.args.get('status')  # A, O, R
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 50, type=int)
+        
+        # Build query
+        query = ParkingSpot.query.join(ParkingLot)
+        
+        if lot_id:
+            query = query.filter(ParkingSpot.lot_id == lot_id)
+        
+        if status_filter:
+            query = query.filter(ParkingSpot.status == status_filter)
+        
+        # Paginate results
+        spots = query.order_by(ParkingLot.prime_location_name, ParkingSpot.spot_number).paginate(
+            page=page, per_page=per_page, error_out=False
+        )
+        
+        # Get detailed information for each spot
+        spots_data = []
+        for spot in spots.items:
+            spot_info = spot.to_dict()
+            
+            # Add parking lot information
+            lot = ParkingLot.query.get(spot.lot_id)
+            spot_info['lot_name'] = lot.prime_location_name if lot else 'Unknown'
+            spot_info['lot_location'] = lot.address if lot else 'Unknown'
+            
+            # Add current vehicle details if occupied
+            if spot.status == 'O' and spot_info.get('current_reservation'):
+                reservation = Reservation.query.get(spot_info['current_reservation']['id'])
+                if reservation:
+                    user = User.query.get(reservation.user_id)
+                    vehicle_details = {
+                        'vehicle_number': reservation.vehicle_number,
+                        'owner_name': user.full_name if user else 'Unknown',
+                        'owner_phone': user.phone_number if user else 'Unknown',
+                        'owner_email': user.email if user else 'Unknown'
+                    }
+                    
+                    # Add parking duration and timestamp if available
+                    if reservation.parking_timestamp:
+                        try:
+                            vehicle_details['parking_duration'] = reservation.calculate_parking_duration()
+                            vehicle_details['parking_since'] = reservation.parking_timestamp.isoformat()
+                            vehicle_details['estimated_cost'] = float(reservation.calculate_cost(lot.price)) if lot else 0
+                        except Exception as e:
+                            vehicle_details['parking_duration'] = 0
+                            vehicle_details['parking_since'] = 'Unknown'
+                            vehicle_details['estimated_cost'] = 0
+                    else:
+                        vehicle_details['parking_duration'] = 0
+                        vehicle_details['parking_since'] = 'Unknown'
+                        vehicle_details['estimated_cost'] = 0
+                    
+                    spot_info['vehicle_details'] = vehicle_details
+            
+            spots_data.append(spot_info)
+        
+        # Get summary statistics
+        total_spots = ParkingSpot.query.count()
+        available_spots = ParkingSpot.query.filter_by(status='A').count()
+        occupied_spots = ParkingSpot.query.filter_by(status='O').count()
+        reserved_spots = ParkingSpot.query.filter_by(status='R').count()
+        
+        return jsonify({
+            'spots': spots_data,
+            'pagination': {
+                'page': spots.page,
+                'pages': spots.pages,
+                'per_page': spots.per_page,
+                'total': spots.total
+            },
+            'summary': {
+                'total_spots': total_spots,
+                'available': available_spots,
+                'occupied': occupied_spots,
+                'reserved': reserved_spots,
+                'occupancy_rate': round((occupied_spots / total_spots * 100), 2) if total_spots > 0 else 0
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@admin_bp.route('/parking-spots/<int:spot_id>/details', methods=['GET'])
+@jwt_required()
+@admin_required
+def get_parking_spot_details(spot_id):
+    """Get detailed information about a specific parking spot and current vehicle"""
+    try:
+        from models.parking_spot import ParkingSpot
+        from models.parking_lot import ParkingLot
+        from models.reservation import Reservation
+        from models.user import User
+        
+        spot = ParkingSpot.query.get_or_404(spot_id)
+        lot = ParkingLot.query.get(spot.lot_id)
+        
+        spot_details = spot.to_dict()
+        spot_details['lot_details'] = {
+            'name': lot.name,
+            'location': lot.location,
+            'hourly_rate': float(lot.hourly_rate),
+            'capacity': lot.capacity
+        }
+        
+        # Get current and recent reservations
+        current_reservation = spot.get_current_reservation()
+        
+        if current_reservation:
+            user = User.query.get(current_reservation.user_id)
+            spot_details['current_occupancy'] = {
+                'reservation_id': current_reservation.id,
+                'vehicle_number': current_reservation.vehicle_number,
+                'user_details': {
+                    'id': user.id,
+                    'full_name': user.full_name,
+                    'phone_number': user.phone_number,
+                    'email': user.email
+                } if user else None,
+                'parking_since': current_reservation.parking_timestamp.isoformat(),
+                'duration_hours': current_reservation.calculate_parking_duration(),
+                'estimated_cost': float(current_reservation.calculate_cost(lot.hourly_rate)),
+                'status': current_reservation.status,
+                'remarks': current_reservation.remarks
+            }
+        
+        # Get recent reservation history for this spot (last 10)
+        recent_reservations = Reservation.query.filter_by(
+            spot_id=spot_id
+        ).order_by(
+            Reservation.created_at.desc()
+        ).limit(10).all()
+        
+        spot_details['recent_history'] = []
+        for res in recent_reservations:
+            user = User.query.get(res.user_id)
+            spot_details['recent_history'].append({
+                'reservation_id': res.id,
+                'vehicle_number': res.vehicle_number,
+                'user_name': user.full_name if user else 'Unknown',
+                'parking_timestamp': res.parking_timestamp.isoformat(),
+                'leaving_timestamp': res.leaving_timestamp.isoformat() if res.leaving_timestamp else None,
+                'duration_hours': res.total_hours,
+                'cost': float(res.parking_cost) if res.parking_cost else None,
+                'status': res.status
+            })
+        
+        return jsonify(spot_details), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@admin_bp.route('/parking-spots/occupied', methods=['GET'])
+@jwt_required()
+@admin_required
+@cached_endpoint('admin_occupied_spots', timeout=30)
+def get_occupied_spots():
+    """Get all currently occupied parking spots with vehicle details"""
+    try:
+        from models.parking_spot import ParkingSpot
+        from models.parking_lot import ParkingLot
+        from models.reservation import Reservation
+        from models.user import User
+        
+        # Get all occupied spots
+        occupied_spots = ParkingSpot.query.filter_by(status='O').all()
+        
+        occupied_details = []
+        for spot in occupied_spots:
+            lot = ParkingLot.query.get(spot.lot_id)
+            current_reservation = spot.get_current_reservation()
+            
+            if current_reservation:
+                user = User.query.get(current_reservation.user_id)
+                duration = current_reservation.calculate_parking_duration()
+                estimated_cost = current_reservation.calculate_cost(lot.hourly_rate) if lot else 0
+                
+                occupied_details.append({
+                    'spot_id': spot.id,
+                    'spot_number': spot.spot_number,
+                    'lot_name': lot.name if lot else 'Unknown',
+                    'lot_location': lot.location if lot else 'Unknown',
+                    'vehicle_number': current_reservation.vehicle_number,
+                    'user_details': {
+                        'id': user.id,
+                        'full_name': user.full_name,
+                        'phone_number': user.phone_number,
+                        'email': user.email
+                    } if user else None,
+                    'parking_since': current_reservation.parking_timestamp.isoformat(),
+                    'duration_hours': duration,
+                    'estimated_cost': float(estimated_cost),
+                    'hourly_rate': float(lot.hourly_rate) if lot else 0,
+                    'status': current_reservation.status,
+                    'overstay_alert': duration > 24  # Flag if parked for more than 24 hours
+                })
+        
+        # Sort by parking duration (longest first)
+        occupied_details.sort(key=lambda x: x['duration_hours'], reverse=True)
+        
+        return jsonify({
+            'occupied_spots': occupied_details,
+            'total_occupied': len(occupied_details),
+            'long_term_parked': len([spot for spot in occupied_details if spot['overstay_alert']])
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@admin_bp.route('/parking-spots/<int:spot_id>/force-release', methods=['POST'])
+@jwt_required()
+@admin_required
+def force_release_parking_spot(spot_id):
+    """Force release a parking spot (admin emergency action)"""
+    try:
+        from models.parking_spot import ParkingSpot
+        from models.reservation import Reservation
+        from models.parking_lot import ParkingLot
+        from database import db
+        
+        data = request.get_json()
+        reason = data.get('reason', 'Admin force release')
+        
+        spot = ParkingSpot.query.get_or_404(spot_id)
+        
+        if spot.status != 'O':
+            return jsonify({'error': 'Spot is not currently occupied'}), 400
+        
+        # Get current reservation
+        current_reservation = spot.get_current_reservation()
+        if current_reservation:
+            # Complete the reservation
+            lot = ParkingLot.query.get(spot.lot_id)
+            current_reservation.complete_reservation(lot.hourly_rate if lot else 50)
+            current_reservation.remarks = f"Force released by admin. Reason: {reason}"
+        
+        # Release the spot
+        spot.release_spot()
+        
+        db.session.commit()
+        
+        # Invalidate cache
+        invalidate_cache('admin_*')
+        invalidate_cache('user_*')
+        
+        return jsonify({
+            'success': True,
+            'message': f'Parking spot {spot.spot_number} has been force released',
+            'spot_status': spot.status,
+            'final_cost': float(current_reservation.parking_cost) if current_reservation and current_reservation.parking_cost else 0
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500

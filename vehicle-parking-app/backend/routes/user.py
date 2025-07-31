@@ -1,9 +1,10 @@
 from flask import Blueprint, request, jsonify, current_app
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from functools import wraps
-import jwt
 from datetime import datetime, timedelta
 import csv
 import io
+from utils.cache_enhanced import cached_endpoint, invalidate_cache
 
 user_bp = Blueprint('user', __name__)
 
@@ -11,30 +12,26 @@ def token_required(f):
     """Decorator to require valid authentication token"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        token = request.headers.get('Authorization')
-        if not token:
-            return jsonify({'error': 'Token is missing'}), 401
+        # Get user ID from JWT
+        current_user_id = get_jwt_identity()
+        if not current_user_id:
+            return jsonify({'error': 'Authentication required'}), 401
         
-        try:
-            if token.startswith('Bearer '):
-                token = token[7:]
-            
-            payload = jwt.decode(token, current_app.config['SECRET_KEY'], algorithms=['HS256'])
-            request.current_user_id = payload['user_id']
-            request.current_user_role = payload['role']
-            
-        except jwt.ExpiredSignatureError:
-            return jsonify({'error': 'Token has expired'}), 401
-        except jwt.InvalidTokenError:
-            return jsonify({'error': 'Invalid token'}), 401
-        except Exception as e:
-            return jsonify({'error': str(e)}), 500
-            
+        # Get additional claims from JWT
+        claims = get_jwt()
+        user_role = claims.get('role', 'user')
+        
+        # Store in request context for use in route handlers
+        request.current_user_id = int(current_user_id)
+        request.current_user_role = user_role
+        
         return f(*args, **kwargs)
     return decorated_function
 
 @user_bp.route('/dashboard', methods=['GET'])
+@jwt_required()
 @token_required
+# @cached_endpoint('user_dashboard', timeout=5, user_specific=True)  # Temporarily disabled for testing
 def user_dashboard():
     """Get user dashboard data"""
     try:
@@ -247,6 +244,7 @@ def user_dashboard():
         return jsonify({'error': str(e)}), 500
 
 @user_bp.route('/profile', methods=['GET'])
+@jwt_required()
 @token_required
 def get_profile():
     """Get user profile"""
@@ -265,6 +263,7 @@ def get_profile():
         return jsonify({'error': str(e)}), 500
 
 @user_bp.route('/profile', methods=['PUT'])
+@jwt_required()
 @token_required
 def update_profile():
     """Update user profile"""
@@ -326,6 +325,7 @@ def update_profile():
         return jsonify({'error': str(e)}), 500
 
 @user_bp.route('/change-password', methods=['PUT'])
+@jwt_required()
 @token_required
 def change_password():
     """Change user password"""
@@ -369,6 +369,7 @@ def change_password():
         return jsonify({'error': str(e)}), 500
 
 @user_bp.route('/export-csv', methods=['POST'])
+@jwt_required()
 @token_required
 def export_reservations_csv():
     """Export user's complete parking history as CSV (async job trigger)"""
@@ -395,6 +396,7 @@ def export_reservations_csv():
         return jsonify({'error': str(e)}), 500
 
 @user_bp.route('/export-status/<task_id>', methods=['GET'])
+@jwt_required()
 @token_required
 def get_export_status(task_id):
     """Get detailed status of CSV export job with progress tracking"""
@@ -447,6 +449,7 @@ def get_export_status(task_id):
         return jsonify({'error': str(e)}), 500
 
 @user_bp.route('/download-csv/<filename>', methods=['GET'])
+@jwt_required()
 @token_required
 def download_csv_file(filename):
     """Download the generated CSV file"""
@@ -484,7 +487,9 @@ def download_csv_file(filename):
         return jsonify({'error': str(e)}), 500
 
 @user_bp.route('/parking-history', methods=['GET'])
+@jwt_required()
 @token_required
+@cached_endpoint('user_parking_history', timeout=10, user_specific=True)
 def get_parking_history():
     """Get detailed parking history with filters"""
     try:
@@ -557,6 +562,7 @@ def get_parking_history():
         return jsonify({'error': str(e)}), 500
 
 @user_bp.route('/reservations', methods=['POST'])
+@jwt_required()
 @token_required
 def create_reservation():
     """Create a new parking reservation - automatically assigns first available spot"""
@@ -629,6 +635,16 @@ def create_reservation():
         db.session.add(reservation)
         db.session.commit()
         
+        # Invalidate relevant caches aggressively
+        user_id = request.current_user_id
+        invalidate_cache(f"lots_*")
+        invalidate_cache(f"dashboard:user_{user_id}")
+        invalidate_cache(f"dashboard*")  # Wildcard for all dashboard caches
+        invalidate_cache(f"reservations:user_{user_id}")
+        invalidate_cache(f"reservations*")  # Wildcard for all reservation caches
+        invalidate_cache(f"parking_history:user_{user_id}")
+        invalidate_cache(f"*user_{user_id}*")  # Wildcard for all user-specific caches
+        
         print(f"DEBUG: Reservation created successfully with ID: {reservation.id}")
         
         return jsonify({
@@ -643,6 +659,7 @@ def create_reservation():
         return jsonify({'error': str(e)}), 500
 
 @user_bp.route('/reservations/<int:reservation_id>/park', methods=['PUT'])
+@jwt_required()
 @token_required
 def mark_as_parked(reservation_id):
     """Mark reservation as parked (user has arrived and parked)"""
@@ -675,6 +692,15 @@ def mark_as_parked(reservation_id):
         
         db.session.commit()
         
+        # Invalidate relevant caches aggressively
+        user_id = request.current_user_id
+        invalidate_cache(f"lots_*")
+        invalidate_cache(f"dashboard:user_{user_id}")
+        invalidate_cache(f"dashboard*")  # Wildcard for all dashboard caches
+        invalidate_cache(f"reservations:user_{user_id}")
+        invalidate_cache(f"reservations*")  # Wildcard for all reservation caches
+        invalidate_cache(f"*user_{user_id}*")  # Wildcard for all user-specific caches
+        
         return jsonify({
             'message': 'Parking marked as occupied successfully',
             'reservation': reservation.to_dict()
@@ -685,6 +711,7 @@ def mark_as_parked(reservation_id):
         return jsonify({'error': str(e)}), 500
 
 @user_bp.route('/reservations/<int:reservation_id>/release', methods=['PUT'])
+@jwt_required()
 @token_required
 def mark_as_released(reservation_id):
     """Mark parking as released (user has left)"""
@@ -749,6 +776,17 @@ def mark_as_released(reservation_id):
         
         print("DEBUG: About to commit to database")
         db.session.commit()
+        
+        # Invalidate relevant caches aggressively
+        user_id = request.current_user_id
+        invalidate_cache(f"lots_*")
+        invalidate_cache(f"dashboard:user_{user_id}")
+        invalidate_cache(f"dashboard*")  # Wildcard for all dashboard caches
+        invalidate_cache(f"reservations:user_{user_id}")
+        invalidate_cache(f"reservations*")  # Wildcard for all reservation caches
+        invalidate_cache(f"parking_history:user_{user_id}")
+        invalidate_cache(f"*user_{user_id}*")  # Wildcard for all user-specific caches
+        
         print("DEBUG: Database commit successful")
         
         return jsonify({
@@ -767,6 +805,7 @@ def mark_as_released(reservation_id):
         return jsonify({'error': str(e)}), 500
 
 @user_bp.route('/reservations/<int:reservation_id>', methods=['DELETE'])
+@jwt_required()
 @token_required
 def cancel_reservation(reservation_id):
     """Cancel a user's reservation"""
@@ -799,6 +838,11 @@ def cancel_reservation(reservation_id):
         
         db.session.commit()
         
+        # Invalidate relevant caches
+        invalidate_cache(f"lots_*")
+        invalidate_cache(f"dashboard:user_{request.current_user_id}")
+        invalidate_cache(f"reservations:user_{request.current_user_id}")
+        
         return jsonify({
             'message': 'Reservation cancelled successfully',
             'reservation': reservation.to_dict()
@@ -809,6 +853,7 @@ def cancel_reservation(reservation_id):
         return jsonify({'error': str(e)}), 500
 
 @user_bp.route('/reservations/<int:reservation_id>/extend', methods=['PUT'])
+@jwt_required()
 @token_required
 def extend_reservation(reservation_id):
     """Extend a user's reservation"""
@@ -843,6 +888,10 @@ def extend_reservation(reservation_id):
         
         db.session.commit()
         
+        # Invalidate relevant caches
+        invalidate_cache(f"dashboard:user_{request.current_user_id}")
+        invalidate_cache(f"reservations:user_{request.current_user_id}")
+        
         return jsonify({
             'message': 'Reservation extended successfully',
             'reservation': reservation.to_dict(),
@@ -854,7 +903,9 @@ def extend_reservation(reservation_id):
         return jsonify({'error': str(e)}), 500
 
 @user_bp.route('/reservations', methods=['GET'])
+@jwt_required()
 @token_required
+# @cached_endpoint('user_reservations', timeout=5, user_specific=True)  # Temporarily disabled for testing
 def get_user_reservations():
     """Get user's reservations"""
     try:
@@ -910,6 +961,7 @@ def get_user_reservations():
         return jsonify({'error': str(e)}), 500
 
 @user_bp.route('/debug/spot-status', methods=['GET'])
+@jwt_required()
 @token_required
 def debug_spot_status():
     """Debug endpoint to check parking spot status consistency"""
@@ -967,6 +1019,7 @@ def debug_spot_status():
         return jsonify({'error': str(e)}), 500
 
 @user_bp.route('/monthly-report', methods=['GET'])
+@jwt_required()
 @token_required
 def get_monthly_report():
     """Get monthly report for the current user"""
@@ -1013,6 +1066,7 @@ def get_monthly_report():
         return jsonify({'error': str(e)}), 500
 
 @user_bp.route('/monthly-reports/history', methods=['GET'])
+@jwt_required()
 @token_required
 def get_monthly_reports_history():
     """Get available monthly reports for the user"""

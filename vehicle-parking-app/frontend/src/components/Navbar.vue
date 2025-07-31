@@ -30,8 +30,10 @@
                     <li class="nav-item" v-if="!authStore.user">
                         <router-link class="nav-link" to="/register">Register</router-link>
                     </li>
-                    <li class="nav-item dropdown" v-if="authStore.user">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    <li class="nav-item dropdown" v-if="authStore.user" ref="dropdownElement">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" 
+                           data-bs-toggle="dropdown" aria-expanded="false"
+                           @click="toggleDropdown">
                             {{ authStore.user.username }}
                         </a>
                         <ul class="dropdown-menu">
@@ -49,11 +51,37 @@
 <script setup>
 import { useAuthStore } from '@/stores/auth';
 import { useRouter } from 'vue-router';
+import { ref, onMounted } from 'vue';
 
 const authStore = useAuthStore();
 const router = useRouter();
+const dropdownElement = ref(null);
+
+onMounted(() => {
+    // Debug: Check if Bootstrap is loaded
+    console.log('Bootstrap loaded:', typeof window.bootstrap !== 'undefined');
+    console.log('Auth store user:', authStore.user);
+});
+
+const toggleDropdown = (event) => {
+    // Manual dropdown toggle as fallback
+    console.log('Dropdown clicked');
+    event.preventDefault();
+    
+    // If Bootstrap is loaded, let it handle the dropdown
+    if (typeof window.bootstrap !== 'undefined') {
+        return true; // Let Bootstrap handle it
+    }
+    
+    // Fallback: manually toggle dropdown
+    const dropdownMenu = event.target.nextElementSibling;
+    if (dropdownMenu) {
+        dropdownMenu.classList.toggle('show');
+    }
+};
 
 const logout = () => {
+    console.log('Logout clicked');
     authStore.logout();
     router.push('/login');
 };

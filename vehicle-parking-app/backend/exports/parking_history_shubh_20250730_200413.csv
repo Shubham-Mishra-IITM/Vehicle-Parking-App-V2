@@ -1,0 +1,5 @@
+Reservation ID,Slot ID (Lot ID),Spot ID,Spot Number,Parking Lot Name,Location Address,Vehicle Number,Created Date,Created Time,Parking Timestamp,Leaving Timestamp,Duration (Hours),Cost (Rs.),Hourly Rate (Rs.),Status,Remarks,Payment Status,Booking Type
+8,6,506,P001,Baker Street,"221, B, Baker Street, London",123,2025-07-26,12:01:38,2025-07-29 11:34:15,,0.0,20.0,10.0,Active,,Pending,Online Booking
+7,2,75,P025,Airport Terminal,"456 Airport Blvd, Terminal A",123,2025-07-26,11:37:14,2025-07-26 11:37:14,2025-07-29 11:32:18,71.92,575.34,8.0,Completed,,Paid,Online Booking
+6,2,52,P002,Airport Terminal,"456 Airport Blvd, Terminal A",123,2025-07-26,11:19:58,2025-07-26 11:19:58,,0.0,24.0,8.0,Active,,Pending,Online Booking
+5,4,226,P001,Shopping Mall,"321 Mall Dr, Shopping District",112,2025-07-26,10:37:15,2025-07-26 10:37:15,,0.0,9.0,4.5,Cancelled,,Cancelled,Online Booking

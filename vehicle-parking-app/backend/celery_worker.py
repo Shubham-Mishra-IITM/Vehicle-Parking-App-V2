@@ -13,18 +13,14 @@ sys.path.insert(0, current_dir)
 os.chdir(current_dir)
 
 from app import app
-from tasks.celery_app import make_celery
+from tasks.celery_app import celery
 
-# Create Celery instance with Flask app context
-celery = make_celery(app.import_name)
+# Import all task modules to ensure they're registered
+import tasks.daily_reminders
+import tasks.monthly_reports
+import tasks.export_csv
 
-# Ensure correct Redis URL for local development
-celery.conf.update(
-    broker_url='redis://localhost:6379/1',
-    result_backend='redis://localhost:6379/1'
-)
-
-# Make sure Flask app context is available in tasks
+# Update the ContextTask to use Flask app context
 class ContextTask(celery.Task):
     """Make celery tasks work with Flask app context."""
     def __call__(self, *args, **kwargs):

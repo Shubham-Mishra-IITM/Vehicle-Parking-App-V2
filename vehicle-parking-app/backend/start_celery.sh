@@ -13,7 +13,7 @@ export FLASK_ENV=development
 
 # Start Celery worker using the Flask-integrated celery worker
 echo "Starting Celery Worker with Flask app context..."
-python3 -m celery -A celery_worker.celery worker --loglevel=info --detach --pidfile=celery_worker.pid --logfile=celery_worker.log
+python3 -m celery -A celery_worker.celery worker --loglevel=info --detach --pidfile=celery_worker.pid --logfile=celery_worker.log --queues=celery,exports,reminders,reports
 
 # Start Celery beat scheduler using the Flask-integrated celery worker
 echo "Starting Celery Beat Scheduler with Flask app context..."

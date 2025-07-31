@@ -1,20 +1,18 @@
 from flask import Blueprint, request, jsonify, current_app
+from flask_jwt_extended import create_access_token
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
-import jwt
 
 # Create blueprint
 auth_bp = Blueprint('auth', __name__)
 
 def generate_token(user_id, role):
-    """Generate JWT token for user"""
-    payload = {
-        'user_id': user_id,
-        'role': role,
-        'exp': datetime.utcnow() + timedelta(hours=24),  # Token expires in 24 hours
-        'iat': datetime.utcnow()
+    """Generate JWT token for user using flask-jwt-extended"""
+    # Create additional claims
+    additional_claims = {
+        'role': role
     }
-    return jwt.encode(payload, current_app.config['SECRET_KEY'], algorithm='HS256')
+    return create_access_token(identity=str(user_id), additional_claims=additional_claims)
 
 @auth_bp.route('/register', methods=['POST'])
 def register():

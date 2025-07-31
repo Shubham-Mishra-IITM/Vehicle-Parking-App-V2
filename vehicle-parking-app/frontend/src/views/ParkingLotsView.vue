@@ -34,24 +34,24 @@
       <div v-for="lot in filteredLots" :key="lot.id" class="col-md-6 col-lg-4 mb-4">
         <div class="card h-100">
           <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">{{ lot.prime_location_name }}</h5>
-            <span :class="lot.is_active ? 'badge bg-success' : 'badge bg-danger'">
-              {{ lot.is_active ? 'Open' : 'Closed' }}
+            <h5 class="mb-0">{{ lot?.prime_location_name || 'Unknown Location' }}</h5>
+            <span :class="lot?.is_active ? 'badge bg-success' : 'badge bg-danger'">
+              {{ lot?.is_active ? 'Open' : 'Closed' }}
             </span>
           </div>
           <div class="card-body">
-            <p class="text-muted small">{{ lot.address }}</p>
-            <p class="text-muted small">PIN: {{ lot.pin_code }}</p>
+            <p class="text-muted small">{{ lot?.address || 'Address not available' }}</p>
+            <p class="text-muted small">PIN: {{ lot?.pin_code || 'N/A' }}</p>
             
             <div class="row mb-3">
               <div class="col-6">
                 <small class="text-muted">Price per hour</small>
-                <div class="h5 text-primary">{{ formatINR(lot.price) }}</div>
+                <div class="h5 text-primary">{{ formatINR(lot?.price || 0) }}</div>
               </div>
               <div class="col-6">
                 <small class="text-muted">Available spots</small>
-                <div class="h5" :class="lot.available_spots > 0 ? 'text-success' : 'text-danger'">
-                  {{ lot.available_spots }} / {{ lot.number_of_spots }}
+                <div class="h5" :class="(lot?.available_spots || 0) > 0 ? 'text-success' : 'text-danger'">
+                  {{ lot?.available_spots || 0 }} / {{ lot?.number_of_spots || 0 }}
                 </div>
               </div>
             </div>
@@ -111,10 +111,10 @@
               <div class="row mb-4">
                 <div class="col-md-6">
                   <h6>Location Information</h6>
-                  <p><strong>Address:</strong> {{ selectedLot.address }}</p>
-                  <p><strong>PIN Code:</strong> {{ selectedLot.pin_code }}</p>
-                  <p><strong>Total Spots:</strong> {{ selectedLot.number_of_spots }}</p>
-                  <p><strong>Available:</strong> {{ selectedLot.available_spots }}</p>
+                  <p><strong>Address:</strong> {{ selectedLot?.address || 'N/A' }}</p>
+                  <p><strong>PIN Code:</strong> {{ selectedLot?.pin_code || 'N/A' }}</p>
+                  <p><strong>Total Spots:</strong> {{ selectedLot?.number_of_spots || 0 }}</p>
+                  <p><strong>Available:</strong> {{ selectedLot?.available_spots || 0 }}</p>
                 </div>
                 <div class="col-md-6">
                   <h6>Pricing & Status</h6>
@@ -248,20 +248,34 @@ export default {
     })
 
     const filteredLots = computed(() => {
-      let filtered = parkingLots.value.filter(lot => 
-        lot.prime_location_name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-        lot.address.toLowerCase().includes(searchQuery.value.toLowerCase())
-      )
+      if (!parkingLots.value || !Array.isArray(parkingLots.value)) {
+        return []
+      }
+
+      let filtered = parkingLots.value.filter(lot => {
+        if (!lot) return false
+        
+        const locationName = lot.prime_location_name || ''
+        const address = lot.address || ''
+        const searchTerm = (searchQuery.value || '').toLowerCase()
+        
+        return locationName.toLowerCase().includes(searchTerm) ||
+               address.toLowerCase().includes(searchTerm)
+      })
 
       // Sort the results
       filtered.sort((a, b) => {
+        if (!a || !b) return 0
+        
         switch (sortBy.value) {
           case 'price':
-            return a.price - b.price
+            return (a.price || 0) - (b.price || 0)
           case 'availability':
-            return b.available_spots - a.available_spots
+            return (b.available_spots || 0) - (a.available_spots || 0)
           default: // name
-            return a.prime_location_name.localeCompare(b.prime_location_name)
+            const nameA = a.prime_location_name || ''
+            const nameB = b.prime_location_name || ''
+            return nameA.localeCompare(nameB)
         }
       })
 
@@ -272,10 +286,21 @@ export default {
       loading.value = true
       try {
         const response = await api.get('/parking/lots')
+        
+        // Validate that response.data is an array
+        if (!Array.isArray(response.data)) {
+          console.error('Expected array but got:', typeof response.data, response.data)
+          error.value = 'Invalid data format received from server'
+          parkingLots.value = []
+          return
+        }
+        
         parkingLots.value = response.data
+        
       } catch (err) {
         error.value = 'Failed to load parking lots'
         console.error('Error fetching parking lots:', err)
+        parkingLots.value = []
       } finally {
         loading.value = false
       }

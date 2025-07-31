@@ -1,6 +1,7 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
+from flask_jwt_extended import JWTManager
 from redis import Redis
 from config import Config
 from dotenv import load_dotenv
@@ -34,6 +35,10 @@ os.makedirs(instance_path, exist_ok=True)
 # Initialize database with app
 db.init_app(app)
 
+# Initialize JWT Manager
+jwt = JWTManager(app)
+print("✅ JWT Manager initialized!")
+
 # Import models after db is set up
 from models.user import User
 from models.parking_lot import ParkingLot  
@@ -55,14 +60,12 @@ CORS(app)
 
 # Initialize Celery with Flask app
 try:
-    from tasks.celery_app import make_celery
-    celery = make_celery(app.import_name)
+    from tasks.celery_app import celery
     
-    # Ensure correct Redis URL for local development
-    celery.conf.update(
-        broker_url='redis://localhost:6379/1',
-        result_backend='redis://localhost:6379/1'
-    )
+    # Import all task modules to ensure they're registered in Flask app
+    import tasks.daily_reminders
+    import tasks.monthly_reports
+    import tasks.export_csv
     
     app.celery = celery  # Make Celery available to the Flask app
     print("✅ Celery initialized with Flask app!")

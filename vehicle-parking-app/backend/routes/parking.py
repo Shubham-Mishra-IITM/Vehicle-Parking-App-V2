@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, current_app
 from functools import wraps
 import jwt
+from utils.cache_enhanced import cached_endpoint, invalidate_cache, cache_manager
 
 parking_bp = Blueprint('parking', __name__)
 
@@ -31,50 +32,78 @@ def token_required(f):
     return decorated_function
 
 @parking_bp.route('/lots', methods=['GET'])
-def get_available_parking_lots():
-    """Get all available parking lots (public endpoint)"""
+@cached_endpoint('parking_lots', timeout=300)
+def get_parking_lots():
+    """Get all available parking lots (public endpoint) - CACHED"""
     try:
         from models.parking_lot import ParkingLot
+        from models.parking_spot import ParkingSpot
         
         lots = ParkingLot.query.filter_by(is_active=True).all()
         
-        # Add availability information
+        # Add availability information with optimized queries
         lots_data = []
         for lot in lots:
             lot_data = lot.to_dict()
+            
+            # Check cache for available spots count first
+            cache_key = f'spots:lot_{lot.id}:available'
+            available_spots = cache_manager.get(cache_key)
+            
+            if available_spots is None:
+                # Calculate and cache available spots
+                available_spots = ParkingSpot.query.filter_by(
+                    lot_id=lot.id, 
+                    status='A'
+                ).count()
+                cache_manager.set(cache_key, available_spots, 60)  # Cache for 1 minute
+            
+            lot_data['available_spots'] = available_spots
             lots_data.append(lot_data)
         
-        return jsonify(lots_data), 200
+        return jsonify(lots_data)
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 @parking_bp.route('/lots/<int:lot_id>', methods=['GET'])
-def get_parking_lot_details(lot_id):
-    """Get detailed information about a parking lot"""
+@cached_endpoint('parking_lot_details', timeout=60)
+def get_lot_details(lot_id):
+    """Get detailed information about a parking lot - CACHED"""
     try:
         from models.parking_lot import ParkingLot
         from models.parking_spot import ParkingSpot
         
         lot = ParkingLot.query.get_or_404(lot_id)
         
-        # Get available spots
-        available_spots = ParkingSpot.query.filter_by(
-            lot_id=lot_id,
-            status='A',
-            is_active=True
-        ).all()
+        # Get available spots with caching
+        cache_key_available = f'spots:lot_{lot_id}:available_details'
+        cache_key_occupied = f'spots:lot_{lot_id}:occupied_details'
         
-        # Get occupied spots with current reservations
-        occupied_spots = ParkingSpot.query.filter_by(
-            lot_id=lot_id,
-            status='O',
-            is_active=True
-        ).all()
+        available_spots_data = cache_manager.get(cache_key_available)
+        occupied_spots_data = cache_manager.get(cache_key_occupied)
+        
+        if available_spots_data is None:
+            available_spots = ParkingSpot.query.filter_by(
+                lot_id=lot_id,
+                status='A',
+                is_active=True
+            ).all()
+            available_spots_data = [spot.to_dict() for spot in available_spots]
+            cache_manager.set(cache_key_available, available_spots_data, 60)  # Cache for 1 minute
+        
+        if occupied_spots_data is None:
+            occupied_spots = ParkingSpot.query.filter_by(
+                lot_id=lot_id,
+                status='O',
+                is_active=True
+            ).all()
+            occupied_spots_data = [spot.to_dict() for spot in occupied_spots]
+            cache_manager.set(cache_key_occupied, occupied_spots_data, 60)  # Cache for 1 minute
         
         lot_data = lot.to_dict()
-        lot_data['available_spots_details'] = [spot.to_dict() for spot in available_spots]
-        lot_data['occupied_spots_details'] = [spot.to_dict() for spot in occupied_spots]
+        lot_data['available_spots_details'] = available_spots_data
+        lot_data['occupied_spots_details'] = occupied_spots_data
         
         return jsonify(lot_data), 200
         
@@ -144,6 +173,9 @@ def reserve_parking_spot():
         db.session.add(reservation)
         db.session.commit()
         
+        # Invalidate cache after successful reservation
+        invalidate_cache('reservation_created', lot_id=lot_id, user_id=request.current_user_id)
+        
         return jsonify({
             'message': 'Parking spot reserved successfully',
             'reservation': reservation.to_dict(),
@@ -187,6 +219,11 @@ def release_parking_spot(reservation_id):
         parking_spot.release_spot()
         
         db.session.commit()
+        
+        # Invalidate cache after successful release
+        invalidate_cache('reservation_updated', 
+                        lot_id=parking_lot.id, 
+                        user_id=request.current_user_id)
         
         return jsonify({
             'message': 'Parking spot released successfully',
