@@ -12,7 +12,7 @@ Profile Management: Users can view and edit their personal information, includin
 
 Password Management: Users can securely change their passwords.
 
-Parking Spot Booking: Book an available parking spot with an initial hold on the user's wallet balance.
+Parking Spot Booking: Book an available parking spot.
 
 Reservations: View active and past reservations, with real-time tracking of duration and cost for active bookings.
 
